@@ -9,6 +9,7 @@ import {
   type InspectorFilter,
   type InspectorState
 } from '../../shared/domain/inspector';
+import { resolveWorkspaceActiveTabId } from '../../shared/domain/workspace';
 import { completeWorkspaceSwitch, createInitialWorkspaceSwitchState, startWorkspaceSwitch } from '../../shared/domain/workspaceState';
 
 interface CreateWorkspaceFormInput {
@@ -34,6 +35,22 @@ interface AppState {
 
 let unsubscribeApiLog: undefined | (() => void);
 
+const resolveActiveWorkspace = (snapshot: AppSnapshot): Workspace | undefined => {
+  if (!snapshot.activeWorkspaceId) return snapshot.workspaces[0];
+  return snapshot.workspaces.find((workspace) => workspace.id === snapshot.activeWorkspaceId) ?? snapshot.workspaces[0];
+};
+
+const syncSnapshotState = (snapshot: AppSnapshot) => {
+  const activeWorkspace = resolveActiveWorkspace(snapshot);
+  const activeTabId = activeWorkspace
+    ? snapshot.activeTabId && activeWorkspace.tabs.some((tab) => tab.id === snapshot.activeTabId)
+      ? snapshot.activeTabId
+      : resolveWorkspaceActiveTabId(activeWorkspace)
+    : undefined;
+
+  return { snapshot, activeWorkspace, activeWorkspaceId: activeWorkspace?.id, activeTabId };
+};
+
 export const useAppStore = create<AppState>((set, get) => ({
   ...createInitialWorkspaceSwitchState(),
   inspector: createInitialInspectorState(),
@@ -42,8 +59,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       const snapshot = await window.stackpilot.workspace.list();
-      const activeWorkspace = snapshot.workspaces.find((w) => w.id === snapshot.activeWorkspaceId) ?? snapshot.workspaces[0];
-      const activeTabId = activeWorkspace?.tabs.find((tab) => tab.isActive)?.id ?? activeWorkspace?.tabs[0]?.id;
+      const { activeWorkspace, activeWorkspaceId, activeTabId } = syncSnapshotState(snapshot);
       const logs = activeWorkspace ? await window.stackpilot.apiLog.list(activeWorkspace.id) : [];
 
       unsubscribeApiLog?.();
@@ -61,7 +77,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         snapshot,
         activeWorkspace,
-        activeWorkspaceId: activeWorkspace?.id,
+        activeWorkspaceId,
         activeTabId,
         inspector: {
           ...get().inspector,
@@ -72,6 +88,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         },
         switchingWorkspaceId: undefined
       });
+
+      if (activeWorkspace && activeTabId) {
+        const activeTab = activeWorkspace.tabs.find((tab) => tab.id === activeTabId);
+        if (activeTab) {
+          await window.stackpilot.browser.navigate(activeWorkspace, activeTabId, activeTab.url);
+        }
+      }
     } catch {
       set((state) => ({ inspector: { ...state.inspector, isLoading: false, errorMessage: 'ログ取得に失敗しました。' } }));
     }
@@ -84,17 +107,19 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     set((state) => ({ ...startWorkspaceSwitch(state, workspaceId), inspector: { ...state.inspector, isLoading: true, errorMessage: undefined } }));
 
-    const activeTab = targetWorkspace.tabs.find((tab) => tab.isActive) ?? targetWorkspace.tabs[0];
-    if (activeTab) {
-      await window.stackpilot.browser.navigate(targetWorkspace, activeTab.id, activeTab.url);
+    const switchedSnapshot = await window.stackpilot.workspace.switch(workspaceId);
+    const { activeWorkspace, activeTabId } = syncSnapshotState(switchedSnapshot);
+    const activeTab = activeWorkspace?.tabs.find((tab) => tab.id === activeTabId);
+
+    if (activeWorkspace && activeTab && activeTabId) {
+      await window.stackpilot.browser.navigate(activeWorkspace, activeTabId, activeTab.url);
     }
 
     try {
       const logs = await window.stackpilot.apiLog.list(workspaceId);
       set((state) => ({
         ...completeWorkspaceSwitch(state, workspaceId),
-        activeWorkspace: targetWorkspace,
-        activeTabId: activeTab?.id,
+        ...syncSnapshotState(switchedSnapshot),
         inspector: {
           ...state.inspector,
           logs: logs.map(toNetworkLog),
@@ -105,21 +130,31 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch {
       set((state) => ({
         ...completeWorkspaceSwitch(state, workspaceId),
-        activeWorkspace: targetWorkspace,
-        activeTabId: activeTab?.id,
+        ...syncSnapshotState(switchedSnapshot),
         inspector: { ...state.inspector, logs: [], isLoading: false, errorMessage: 'ログ取得に失敗しました。' }
       }));
     }
   },
   navigate: async (url) => {
-    const { activeWorkspace, activeTabId } = get();
-    if (!activeWorkspace || !activeTabId) return;
+    const { activeWorkspace, activeTabId, snapshot } = get();
+    if (!activeWorkspace || !activeTabId || !snapshot) return;
     await window.stackpilot.browser.navigate(activeWorkspace, activeTabId, url);
+
     const updatedTabs = activeWorkspace.tabs.map((tab) =>
-      tab.id === activeTabId ? { ...tab, url } : { ...tab, isActive: tab.id === activeTabId }
+      tab.id === activeTabId ? { ...tab, url, isActive: true } : { ...tab, isActive: false }
     );
+
+    const nextSnapshot = await window.stackpilot.workspace.activateTab(activeWorkspace.id, activeTabId);
     await window.stackpilot.workspace.persistTabs(activeWorkspace.id, updatedTabs);
-    set({ activeWorkspace: { ...activeWorkspace, tabs: updatedTabs } });
+
+    const mergedSnapshot: AppSnapshot = {
+      ...nextSnapshot,
+      workspaces: nextSnapshot.workspaces.map((workspace) =>
+        workspace.id === activeWorkspace.id ? { ...workspace, tabs: updatedTabs } : workspace
+      )
+    };
+
+    set({ ...syncSnapshotState(mergedSnapshot) });
   },
   openDevTools: async () => {
     await window.stackpilot.browser.openDevTools();

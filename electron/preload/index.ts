@@ -7,6 +7,8 @@ const channels = {
   workspaceUpdate: 'workspace:update',
   workspaceDelete: 'workspace:delete',
   workspacePersistTabs: 'workspace:persist-tabs',
+  workspaceSwitch: 'workspace:switch',
+  workspaceActivateTab: 'workspace:activate-tab',
   browserNavigate: 'browser:navigate',
   browserOpenDevTools: 'browser:open-devtools',
   apiLogList: 'api-log:list',
@@ -21,7 +23,10 @@ const api = {
       ipcRenderer.invoke(channels.workspaceUpdate, workspaceId, patch),
     remove: (workspaceId: string): Promise<boolean> => ipcRenderer.invoke(channels.workspaceDelete, workspaceId),
     persistTabs: (workspaceId: string, tabs: Workspace['tabs']): Promise<boolean> =>
-      ipcRenderer.invoke(channels.workspacePersistTabs, workspaceId, tabs)
+      ipcRenderer.invoke(channels.workspacePersistTabs, workspaceId, tabs),
+    switch: (workspaceId: string): Promise<AppSnapshot> => ipcRenderer.invoke(channels.workspaceSwitch, workspaceId),
+    activateTab: (workspaceId: string, tabId: string): Promise<AppSnapshot> =>
+      ipcRenderer.invoke(channels.workspaceActivateTab, workspaceId, tabId)
   },
   browser: {
     navigate: (workspace: Workspace, tabId: string, url: string): Promise<boolean> =>

@@ -1,25 +1,11 @@
 import type { EnvironmentType } from './domain/environment';
+import type { WorkspaceModel, WorkspaceTab } from './domain/workspace';
 
 export type EnvironmentLabel = EnvironmentType;
 
-export interface TabState {
-  id: string;
-  title: string;
-  url: string;
-  isActive: boolean;
-}
+export type TabState = WorkspaceTab;
 
-export interface Workspace {
-  id: string;
-  name: string;
-  environmentType: EnvironmentType;
-  customEnvironmentLabel?: string;
-  prodDomains: string[];
-  partition: string;
-  tabs: TabState[];
-  createdAt: string;
-  updatedAt: string;
-}
+export type Workspace = WorkspaceModel;
 
 export interface ApiLogEntry {
   id: string;
@@ -40,6 +26,7 @@ export interface ApiLogEntry {
 export interface AppSnapshot {
   version: 1;
   activeWorkspaceId?: string;
+  activeTabId?: string;
   workspaces: Workspace[];
 }
 

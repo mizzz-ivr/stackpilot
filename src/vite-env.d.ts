@@ -10,6 +10,8 @@ declare global {
         update: (workspaceId: string, patch: Partial<Workspace>) => Promise<Workspace | null>;
         remove: (workspaceId: string) => Promise<boolean>;
         persistTabs: (workspaceId: string, tabs: Workspace['tabs']) => Promise<boolean>;
+        switch: (workspaceId: string) => Promise<AppSnapshot>;
+        activateTab: (workspaceId: string, tabId: string) => Promise<AppSnapshot>;
       };
       browser: {
         navigate: (workspace: Workspace, tabId: string, url: string) => Promise<boolean>;

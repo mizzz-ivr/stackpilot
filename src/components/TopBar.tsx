@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { EnvironmentBadge } from './EnvironmentBadge';
 import { useAppStore } from '../store/appStore';
 import { getSafetyLevelByEnvironment, safetyDialogMessage } from '../../shared/domain/safety';
@@ -7,7 +7,16 @@ export const TopBar = () => {
   const navigate = useAppStore((s) => s.navigate);
   const openDevTools = useAppStore((s) => s.openDevTools);
   const activeWorkspace = useAppStore((s) => s.activeWorkspace);
+  const activeTabId = useAppStore((s) => s.activeTabId);
   const [url, setUrl] = useState('https://example.com');
+
+  const activeTab = activeWorkspace?.tabs.find((tab) => tab.id === activeTabId);
+
+  useEffect(() => {
+    if (activeTab?.url) {
+      setUrl(activeTab.url);
+    }
+  }, [activeTab?.id, activeTab?.url]);
 
   const safetyLevel = useMemo(
     () => (activeWorkspace ? getSafetyLevelByEnvironment(activeWorkspace.environmentType) : 'normal'),

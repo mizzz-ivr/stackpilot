@@ -14,33 +14,31 @@ export class BrowserViewManager {
     const key = `${workspace.id}:${tabId}`;
     const existing = this.views.get(key);
     if (existing) {
-      window.setBrowserView(existing);
-      existing.webContents.loadURL(url);
-      this.resize(window, existing);
-      this.activeTab = { view: existing, workspaceId: workspace.id, tabId };
+      this.mountView(window, existing, workspace.id, tabId);
+      if (existing.webContents.getURL() !== url) {
+        existing.webContents.loadURL(url);
+      }
       return existing;
     }
 
     const view = new BrowserView({
       webPreferences: {
-        partition: workspace.partition,
+        partition: workspace.partitionKey,
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true
       }
     });
 
-    const targetSession = session.fromPartition(workspace.partition);
-    this.apiLogService.attachSession(targetSession, workspace.id, (webContentsId) => {
+    const targetSession = session.fromPartition(workspace.partitionKey);
+    this.apiLogService.attachSession(targetSession, workspace.partitionKey, workspace.id, (webContentsId) => {
       const hit = [...this.views.entries()].find(([, v]) => v.webContents.id === webContentsId);
       return hit?.[0].split(':')[1];
     });
 
     this.views.set(key, view);
-    window.setBrowserView(view);
+    this.mountView(window, view, workspace.id, tabId);
     view.webContents.loadURL(url);
-    this.resize(window, view);
-    this.activeTab = { view, workspaceId: workspace.id, tabId };
     return view;
   }
 
@@ -58,5 +56,11 @@ export class BrowserViewManager {
 
   currentWebContentsId(): number | undefined {
     return this.activeTab?.view.webContents.id;
+  }
+
+  private mountView(window: BrowserWindow, view: BrowserView, workspaceId: string, tabId: string): void {
+    window.setBrowserView(view);
+    this.resize(window, view);
+    this.activeTab = { view, workspaceId, tabId };
   }
 }

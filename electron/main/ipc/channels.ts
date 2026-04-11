@@ -4,6 +4,8 @@ export const CHANNELS = {
   workspaceUpdate: 'workspace:update',
   workspaceDelete: 'workspace:delete',
   workspacePersistTabs: 'workspace:persist-tabs',
+  workspaceSwitch: 'workspace:switch',
+  workspaceActivateTab: 'workspace:activate-tab',
   browserNavigate: 'browser:navigate',
   browserOpenDevTools: 'browser:open-devtools',
   apiLogList: 'api-log:list',

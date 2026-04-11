@@ -12,16 +12,21 @@ export class ApiLogService {
   private attachedPartitions = new Set<string>();
   private listeners = new Set<LogListener>();
 
-  attachSession(session: Session, workspaceId: string, tabIdResolver: (webContentsId: number) => string | undefined): void {
-    if (this.attachedPartitions.has(session.getPartition())) {
+  attachSession(
+    session: Session,
+    partitionKey: string,
+    workspaceId: string,
+    tabIdResolver: (webContentsId: number) => string | undefined
+  ): void {
+    if (this.attachedPartitions.has(partitionKey)) {
       return;
     }
-    this.attachedPartitions.add(session.getPartition());
+    this.attachedPartitions.add(partitionKey);
 
     session.webRequest.onBeforeRequest((details, callback) => {
       const tabId = tabIdResolver(details.webContentsId ?? -1) ?? 'unknown';
       const resourceType = details.resourceType;
-      const type = resourceType === 'xhr' || resourceType === 'fetch' ? resourceType : 'other';
+      const type: ApiLogEntry['type'] = resourceType === 'xhr' ? 'xhr' : 'other';
       this.requestMap.set(details.id, { startedAt: Date.now(), workspaceId, tabId, type });
       callback({ cancel: false });
     });

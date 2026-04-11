@@ -30,6 +30,14 @@ export const registerHandlers = (
     return true;
   });
 
+  ipcMain.handle(CHANNELS.workspaceSwitch, async (_event, workspaceId: string) => {
+    return workspaceService.switchWorkspace(workspaceId);
+  });
+
+  ipcMain.handle(CHANNELS.workspaceActivateTab, async (_event, workspaceId: string, tabId: string) => {
+    return workspaceService.activateTab(workspaceId, tabId);
+  });
+
   ipcMain.handle(CHANNELS.browserNavigate, async (_event, workspace: Workspace, tabId: string, url: string) => {
     browserViewManager.openTab(mainWindow, workspace, tabId, url);
     return true;
