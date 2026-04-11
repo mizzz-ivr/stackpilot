@@ -1,0 +1,67 @@
+{
+  "name": "stackpilot",
+  "version": "0.1.0",
+  "description": "Developer workspace browser built with Electron + React",
+  "main": "dist-electron/main/index.js",
+  "author": "stackpilot team",
+  "license": "MIT",
+  "packageManager": "pnpm@9.12.3",
+  "scripts": {
+    "dev": "concurrently -k \"pnpm dev:renderer\" \"pnpm dev:electron\"",
+    "dev:renderer": "vite",
+    "dev:electron": "wait-on tcp:5173 && tsx electron/main/index.ts",
+    "build": "pnpm build:renderer && pnpm build:electron",
+    "build:renderer": "vite build",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "lint": "eslint .",
+    "package": "pnpm build && electron-builder"
+  },
+  "build": {
+    "appId": "com.stackpilot.app",
+    "productName": "stackpilot",
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "build"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  },
+  "dependencies": {
+    "electron-store": "^10.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "concurrently": "^9.1.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "eslint": "^9.14.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "tailwindcss": "^3.4.14",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vitest": "^2.1.4",
+    "wait-on": "^8.0.1"
+  }
+}
