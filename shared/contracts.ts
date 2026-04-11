@@ -1,4 +1,6 @@
-export type EnvironmentLabel = 'local' | 'dev' | 'stg' | 'prod' | 'custom';
+import type { EnvironmentType } from './domain/environment';
+
+export type EnvironmentLabel = EnvironmentType;
 
 export interface TabState {
   id: string;
@@ -10,7 +12,7 @@ export interface TabState {
 export interface Workspace {
   id: string;
   name: string;
-  environment: EnvironmentLabel;
+  environmentType: EnvironmentType;
   customEnvironmentLabel?: string;
   prodDomains: string[];
   partition: string;
@@ -41,4 +43,7 @@ export interface AppSnapshot {
   workspaces: Workspace[];
 }
 
-export type CreateWorkspaceInput = Pick<Workspace, 'name' | 'environment' | 'customEnvironmentLabel' | 'prodDomains'>;
+export type CreateWorkspaceInput = Pick<
+  Workspace,
+  'name' | 'environmentType' | 'customEnvironmentLabel' | 'prodDomains'
+>;

@@ -1,7 +1,24 @@
 import { randomUUID } from 'node:crypto';
 import type { AppSnapshot, CreateWorkspaceInput, Workspace } from '../../../shared/contracts';
+import type { EnvironmentType } from '../../../shared/domain/environment';
 import { buildWorkspacePartition } from '../domain/partition';
 import { JsonRepository } from '../persistence/jsonRepository';
+
+interface LegacyWorkspace {
+  environment?: EnvironmentType;
+  environmentType?: EnvironmentType;
+}
+
+const normalizeSnapshot = (snapshot: AppSnapshot): AppSnapshot => ({
+  ...snapshot,
+  workspaces: snapshot.workspaces.map((workspace) => {
+    const legacy = workspace as Workspace & LegacyWorkspace;
+    return {
+      ...workspace,
+      environmentType: legacy.environmentType ?? legacy.environment ?? 'dev'
+    };
+  })
+});
 
 export class WorkspaceService {
   private snapshot: AppSnapshot = { version: 1, workspaces: [] };
@@ -9,7 +26,8 @@ export class WorkspaceService {
   constructor(private readonly repository: JsonRepository<AppSnapshot>) {}
 
   async init(): Promise<void> {
-    this.snapshot = await this.repository.load();
+    const loadedSnapshot = await this.repository.load();
+    this.snapshot = normalizeSnapshot(loadedSnapshot);
   }
 
   list(): Workspace[] {
@@ -26,13 +44,11 @@ export class WorkspaceService {
     const workspace: Workspace = {
       id,
       name: input.name,
-      environment: input.environment,
+      environmentType: input.environmentType,
       customEnvironmentLabel: input.customEnvironmentLabel,
       prodDomains: input.prodDomains,
       partition: buildWorkspacePartition(id),
-      tabs: [
-        { id: randomUUID(), title: 'New Tab', url: 'https://example.com', isActive: true }
-      ],
+      tabs: [{ id: randomUUID(), title: 'New Tab', url: 'https://example.com', isActive: true }],
       createdAt: now,
       updatedAt: now
     };

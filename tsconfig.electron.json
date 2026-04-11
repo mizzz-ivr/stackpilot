@@ -8,7 +8,7 @@
     "moduleResolution": "Node",
     "strict": true,
     "outDir": "dist-electron",
-    "rootDir": "electron",
+    "rootDir": ".",
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

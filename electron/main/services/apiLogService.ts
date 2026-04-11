@@ -12,7 +12,7 @@ export class ApiLogService {
     session.webRequest.onBeforeRequest((details, callback) => {
       const tabId = tabIdResolver(details.webContentsId ?? -1) ?? 'unknown';
       const resourceType = details.resourceType;
-      const type = resourceType === 'xhr' ? 'xhr' : resourceType === 'fetch' ? 'fetch' : 'other';
+      const type = resourceType === 'xhr' ? 'xhr' : 'other';
       this.requestMap.set(details.id, { startedAt: Date.now(), workspaceId, tabId, type });
       callback({ cancel: false });
     });
