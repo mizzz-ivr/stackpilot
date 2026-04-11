@@ -9,19 +9,19 @@ type LogListener = (entry: ApiLogEntry) => void;
 export class ApiLogService {
   private logs: ApiLogEntry[] = [];
   private requestMap = new Map<number, RequestMeta>();
-  private attachedPartitions = new Set<string>();
+  private attachedSessions = new WeakSet<Session>();
   private listeners = new Set<LogListener>();
 
   attachSession(session: Session, workspaceId: string, tabIdResolver: (webContentsId: number) => string | undefined): void {
-    if (this.attachedPartitions.has(session.getPartition())) {
+    if (this.attachedSessions.has(session)) {
       return;
     }
-    this.attachedPartitions.add(session.getPartition());
+    this.attachedSessions.add(session);
 
     session.webRequest.onBeforeRequest((details, callback) => {
       const tabId = tabIdResolver(details.webContentsId ?? -1) ?? 'unknown';
       const resourceType = details.resourceType;
-      const type = resourceType === 'xhr' || resourceType === 'fetch' ? resourceType : 'other';
+      const type = resourceType === 'xhr' ? 'xhr' : 'other';
       this.requestMap.set(details.id, { startedAt: Date.now(), workspaceId, tabId, type });
       callback({ cancel: false });
     });
