@@ -17,6 +17,7 @@ declare global {
       };
       apiLog: {
         list: (workspaceId: string) => Promise<ApiLogEntry[]>;
+        subscribe: (handler: (entry: ApiLogEntry) => void) => () => void;
       };
     };
   }

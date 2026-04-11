@@ -9,7 +9,8 @@ const channels = {
   workspacePersistTabs: 'workspace:persist-tabs',
   browserNavigate: 'browser:navigate',
   browserOpenDevTools: 'browser:open-devtools',
-  apiLogList: 'api-log:list'
+  apiLogList: 'api-log:list',
+  apiLogReceived: 'api-log:received'
 } as const;
 
 const api = {
@@ -28,7 +29,12 @@ const api = {
     openDevTools: (): Promise<boolean> => ipcRenderer.invoke(channels.browserOpenDevTools)
   },
   apiLog: {
-    list: (workspaceId: string): Promise<ApiLogEntry[]> => ipcRenderer.invoke(channels.apiLogList, workspaceId)
+    list: (workspaceId: string): Promise<ApiLogEntry[]> => ipcRenderer.invoke(channels.apiLogList, workspaceId),
+    subscribe: (handler: (entry: ApiLogEntry) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, entry: ApiLogEntry) => handler(entry);
+      ipcRenderer.on(channels.apiLogReceived, listener);
+      return () => ipcRenderer.removeListener(channels.apiLogReceived, listener);
+    }
   }
 };
 

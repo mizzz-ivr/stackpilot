@@ -6,5 +6,6 @@ export const CHANNELS = {
   workspacePersistTabs: 'workspace:persist-tabs',
   browserNavigate: 'browser:navigate',
   browserOpenDevTools: 'browser:open-devtools',
-  apiLogList: 'api-log:list'
+  apiLogList: 'api-log:list',
+  apiLogReceived: 'api-log:received'
 } as const;

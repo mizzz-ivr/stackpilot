@@ -41,4 +41,8 @@ export const registerHandlers = (
   });
 
   ipcMain.handle(CHANNELS.apiLogList, (_event, workspaceId: string) => apiLogService.list(workspaceId));
+
+  apiLogService.onLog((entry) => {
+    mainWindow.webContents.send(CHANNELS.apiLogReceived, entry);
+  });
 };
