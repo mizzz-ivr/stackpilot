@@ -1,6 +1,14 @@
 import { create } from 'zustand';
-import type { ApiLogEntry, AppSnapshot, Workspace } from '../../shared/contracts';
+import type { AppSnapshot, Workspace } from '../../shared/contracts';
 import type { EnvironmentType } from '../../shared/domain/environment';
+import {
+  createInitialInspectorState,
+  defaultInspectorFilter,
+  filterLogs,
+  toNetworkLog,
+  type InspectorFilter,
+  type InspectorState
+} from '../../shared/domain/inspector';
 import { completeWorkspaceSwitch, createInitialWorkspaceSwitchState, startWorkspaceSwitch } from '../../shared/domain/workspaceState';
 
 interface CreateWorkspaceFormInput {
@@ -15,30 +23,58 @@ interface AppState {
   activeWorkspaceId?: string;
   switchingWorkspaceId?: string;
   activeTabId?: string;
-  apiLogs: ApiLogEntry[];
+  inspector: InspectorState;
   load: () => Promise<void>;
   selectWorkspace: (workspaceId: string) => Promise<void>;
   navigate: (url: string) => Promise<void>;
   openDevTools: () => Promise<void>;
+  setInspectorFilter: (kind: InspectorFilter['kind']) => void;
   createWorkspace: (input: CreateWorkspaceFormInput) => Promise<void>;
 }
 
+let unsubscribeApiLog: undefined | (() => void);
+
 export const useAppStore = create<AppState>((set, get) => ({
   ...createInitialWorkspaceSwitchState(),
-  apiLogs: [],
+  inspector: createInitialInspectorState(),
   load: async () => {
-    const snapshot = await window.stackpilot.workspace.list();
-    const activeWorkspace = snapshot.workspaces.find((w) => w.id === snapshot.activeWorkspaceId) ?? snapshot.workspaces[0];
-    const activeTabId = activeWorkspace?.tabs.find((tab) => tab.isActive)?.id ?? activeWorkspace?.tabs[0]?.id;
-    const apiLogs = activeWorkspace ? await window.stackpilot.apiLog.list(activeWorkspace.id) : [];
-    set({
-      snapshot,
-      activeWorkspace,
-      activeWorkspaceId: activeWorkspace?.id,
-      activeTabId,
-      apiLogs,
-      switchingWorkspaceId: undefined
-    });
+    set((state) => ({ inspector: { ...state.inspector, isLoading: true, errorMessage: undefined } }));
+
+    try {
+      const snapshot = await window.stackpilot.workspace.list();
+      const activeWorkspace = snapshot.workspaces.find((w) => w.id === snapshot.activeWorkspaceId) ?? snapshot.workspaces[0];
+      const activeTabId = activeWorkspace?.tabs.find((tab) => tab.isActive)?.id ?? activeWorkspace?.tabs[0]?.id;
+      const logs = activeWorkspace ? await window.stackpilot.apiLog.list(activeWorkspace.id) : [];
+
+      unsubscribeApiLog?.();
+      unsubscribeApiLog = window.stackpilot.apiLog.subscribe((entry) => {
+        const currentWorkspaceId = get().activeWorkspaceId;
+        if (!currentWorkspaceId || entry.workspaceId !== currentWorkspaceId) return;
+        set((state) => ({
+          inspector: {
+            ...state.inspector,
+            logs: [toNetworkLog(entry), ...state.inspector.logs].slice(0, 500)
+          }
+        }));
+      });
+
+      set({
+        snapshot,
+        activeWorkspace,
+        activeWorkspaceId: activeWorkspace?.id,
+        activeTabId,
+        inspector: {
+          ...get().inspector,
+          logs: logs.map(toNetworkLog),
+          isLoading: false,
+          errorMessage: undefined,
+          filter: defaultInspectorFilter
+        },
+        switchingWorkspaceId: undefined
+      });
+    } catch {
+      set((state) => ({ inspector: { ...state.inspector, isLoading: false, errorMessage: 'ログ取得に失敗しました。' } }));
+    }
   },
   selectWorkspace: async (workspaceId) => {
     const snapshot = get().snapshot;
@@ -46,20 +82,34 @@ export const useAppStore = create<AppState>((set, get) => ({
     const targetWorkspace = snapshot.workspaces.find((w) => w.id === workspaceId);
     if (!targetWorkspace) return;
 
-    set((state) => startWorkspaceSwitch(state, workspaceId));
+    set((state) => ({ ...startWorkspaceSwitch(state, workspaceId), inspector: { ...state.inspector, isLoading: true, errorMessage: undefined } }));
 
     const activeTab = targetWorkspace.tabs.find((tab) => tab.isActive) ?? targetWorkspace.tabs[0];
     if (activeTab) {
       await window.stackpilot.browser.navigate(targetWorkspace, activeTab.id, activeTab.url);
     }
-    const apiLogs = await window.stackpilot.apiLog.list(workspaceId);
 
-    set((state) => ({
-      ...completeWorkspaceSwitch(state, workspaceId),
-      activeWorkspace: targetWorkspace,
-      activeTabId: activeTab?.id,
-      apiLogs
-    }));
+    try {
+      const logs = await window.stackpilot.apiLog.list(workspaceId);
+      set((state) => ({
+        ...completeWorkspaceSwitch(state, workspaceId),
+        activeWorkspace: targetWorkspace,
+        activeTabId: activeTab?.id,
+        inspector: {
+          ...state.inspector,
+          logs: logs.map(toNetworkLog),
+          isLoading: false,
+          errorMessage: undefined
+        }
+      }));
+    } catch {
+      set((state) => ({
+        ...completeWorkspaceSwitch(state, workspaceId),
+        activeWorkspace: targetWorkspace,
+        activeTabId: activeTab?.id,
+        inspector: { ...state.inspector, logs: [], isLoading: false, errorMessage: 'ログ取得に失敗しました。' }
+      }));
+    }
   },
   navigate: async (url) => {
     const { activeWorkspace, activeTabId } = get();
@@ -74,6 +124,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   openDevTools: async () => {
     await window.stackpilot.browser.openDevTools();
   },
+  setInspectorFilter: (kind) => {
+    set((state) => ({ inspector: { ...state.inspector, filter: { kind } } }));
+  },
   createWorkspace: async (input) => {
     await window.stackpilot.workspace.create({
       name: input.name,
@@ -84,3 +137,5 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().load();
   }
 }));
+
+export const selectFilteredLogs = (state: AppState) => filterLogs(state.inspector.logs, state.inspector.filter);

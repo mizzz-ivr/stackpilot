@@ -18,9 +18,11 @@ export const App = () => {
   return (
     <div className={`flex h-screen ${isProd ? 'prod-shell' : ''}`}>
       <WorkspaceSidebar />
-      <main className="flex flex-1 flex-col">
-        <TopBar />
-        <section className="flex-1 p-4 text-sm text-slate-400">BrowserView領域はElectron側で描画</section>
+      <main className="flex flex-1">
+        <section className="flex min-w-0 flex-1 flex-col">
+          <TopBar />
+          <section className="flex-1 p-4 text-sm text-slate-400">BrowserView領域はElectron側で描画</section>
+        </section>
         <ApiLogPanel />
       </main>
     </div>
