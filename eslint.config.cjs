@@ -1,4 +1,3 @@
-const js = require('@eslint/js');
 const tsParser = require('@typescript-eslint/parser');
 const tsPlugin = require('@typescript-eslint/eslint-plugin');
 const reactHooks = require('eslint-plugin-react-hooks');
@@ -14,7 +13,6 @@ module.exports = [
       'node_modules/**'
     ]
   },
-  js.configs.recommended,
   {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
