@@ -7,6 +7,7 @@ export interface TabState {
   title: string;
   url: string;
   isActive: boolean;
+  workspaceId: string;
 }
 
 export interface Workspace {
@@ -15,7 +16,7 @@ export interface Workspace {
   environmentType: EnvironmentType;
   customEnvironmentLabel?: string;
   prodDomains: string[];
-  partition: string;
+  partitionKey: string;
   tabs: TabState[];
   createdAt: string;
   updatedAt: string;
@@ -38,9 +39,12 @@ export interface ApiLogEntry {
 }
 
 export interface AppSnapshot {
-  version: 1;
+  version: number;
   activeWorkspaceId?: string;
+  activeTabId?: string;
   workspaces: Workspace[];
+  restoredFromSession?: boolean;
+  restoreWarnings?: string[];
 }
 
 export type CreateWorkspaceInput = Pick<

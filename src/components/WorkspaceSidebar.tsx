@@ -77,7 +77,7 @@ export const WorkspaceSidebar = () => {
                   <span className="truncate font-medium">{workspace.name}</span>
                   <EnvironmentBadge environmentType={workspace.environmentType} />
                 </div>
-                <div className="text-xs text-slate-400">partition: {workspace.partition}</div>
+                <div className="text-xs text-slate-400">partition: {workspace.partitionKey}</div>
               </button>
             );
           })}

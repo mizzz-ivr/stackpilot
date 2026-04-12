@@ -11,6 +11,7 @@ declare global {
         update: (workspaceId: string, patch: Partial<Workspace>) => Promise<Workspace | null>;
         remove: (workspaceId: string) => Promise<boolean>;
         persistTabs: (workspaceId: string, tabs: Workspace['tabs']) => Promise<boolean>;
+        setActiveContext: (workspaceId?: string, tabId?: string) => Promise<boolean>;
       };
       browser: {
         navigate: (workspace: Workspace, tabId: string, url: string) => Promise<boolean>;

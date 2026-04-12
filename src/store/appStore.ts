@@ -55,8 +55,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const snapshot = await window.stackpilot.workspace.list();
       const activeWorkspace = snapshot.workspaces.find((w) => w.id === snapshot.activeWorkspaceId) ?? snapshot.workspaces[0];
-      const activeTabId = activeWorkspace?.tabs.find((tab) => tab.isActive)?.id ?? activeWorkspace?.tabs[0]?.id;
+      const activeTab =
+        (snapshot.activeTabId && activeWorkspace?.tabs.find((tab) => tab.id === snapshot.activeTabId)) ??
+        activeWorkspace?.tabs.find((tab) => tab.isActive) ??
+        activeWorkspace?.tabs[0];
       const logs = activeWorkspace ? await window.stackpilot.apiLog.list(activeWorkspace.id) : [];
+
+      if (activeWorkspace && activeTab) {
+        await window.stackpilot.browser.navigate(activeWorkspace, activeTab.id, activeTab.url);
+        await window.stackpilot.workspace.setActiveContext(activeWorkspace.id, activeTab.id);
+      }
 
       unsubscribeApiLog?.();
       unsubscribeApiLog = window.stackpilot.apiLog.subscribe((entry) => {
@@ -74,7 +82,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         snapshot,
         activeWorkspace,
         activeWorkspaceId: activeWorkspace?.id,
-        activeTabId,
+        activeTabId: activeTab?.id,
         inspector: {
           ...get().inspector,
           logs: logs.map(toNetworkLog),
@@ -99,6 +107,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const activeTab = targetWorkspace.tabs.find((tab) => tab.isActive) ?? targetWorkspace.tabs[0];
     if (activeTab) {
       await window.stackpilot.browser.navigate(targetWorkspace, activeTab.id, activeTab.url);
+      await window.stackpilot.workspace.setActiveContext(targetWorkspace.id, activeTab.id);
     }
 
     try {
@@ -128,10 +137,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!activeWorkspace || !activeTabId) return;
     await window.stackpilot.browser.navigate(activeWorkspace, activeTabId, url);
     const updatedTabs = activeWorkspace.tabs.map((tab) =>
-      tab.id === activeTabId ? { ...tab, url } : { ...tab, isActive: tab.id === activeTabId }
+      tab.id === activeTabId ? { ...tab, url, workspaceId: activeWorkspace.id, isActive: true } : { ...tab, workspaceId: activeWorkspace.id, isActive: false }
     );
     await window.stackpilot.workspace.persistTabs(activeWorkspace.id, updatedTabs);
-    set({ activeWorkspace: { ...activeWorkspace, tabs: updatedTabs } });
+    await window.stackpilot.workspace.setActiveContext(activeWorkspace.id, activeTabId);
+    const snapshot = get().snapshot;
+    set({
+      snapshot: snapshot
+        ? {
+            ...snapshot,
+            activeWorkspaceId: activeWorkspace.id,
+            activeTabId,
+            workspaces: snapshot.workspaces.map((workspace) => (workspace.id === activeWorkspace.id ? { ...workspace, tabs: updatedTabs } : workspace))
+          }
+        : snapshot,
+      activeWorkspace: { ...activeWorkspace, tabs: updatedTabs }
+    });
   },
   openDevTools: async () => {
     await window.stackpilot.browser.openDevTools();

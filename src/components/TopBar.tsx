@@ -7,6 +7,7 @@ export const TopBar = () => {
   const navigate = useAppStore((s) => s.navigate);
   const openDevTools = useAppStore((s) => s.openDevTools);
   const activeWorkspace = useAppStore((s) => s.activeWorkspace);
+  const snapshot = useAppStore((s) => s.snapshot);
   const [url, setUrl] = useState('https://example.com');
 
   const safetyLevel = useMemo(
@@ -32,6 +33,12 @@ export const TopBar = () => {
         </button>
         {activeWorkspace ? <EnvironmentBadge environmentType={activeWorkspace.environmentType} /> : null}
       </div>
+      {snapshot?.restoredFromSession ? (
+        <div className="rounded bg-indigo-950/50 px-3 py-1 text-xs text-indigo-200">
+          前回の作業コンテキストを復元しました。
+          {(snapshot.restoreWarnings?.length ?? 0) > 0 ? `（補正 ${snapshot.restoreWarnings?.length} 件）` : ''}
+        </div>
+      ) : null}
       {activeWorkspace ? (
         <div
           className={`rounded px-3 py-1 text-xs ${

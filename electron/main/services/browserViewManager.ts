@@ -23,14 +23,14 @@ export class BrowserViewManager {
 
     const view = new BrowserView({
       webPreferences: {
-        partition: workspace.partition,
+        partition: workspace.partitionKey,
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true
       }
     });
 
-    const targetSession = session.fromPartition(workspace.partition);
+    const targetSession = session.fromPartition(workspace.partitionKey);
     this.apiLogService.attachSession(targetSession, workspace, (webContentsId) => {
       const hit = [...this.views.entries()].find(([, v]) => v.webContents.id === webContentsId);
       return hit?.[0].split(':')[1];

@@ -56,6 +56,11 @@ export const registerHandlers = (
     return true;
   });
 
+  ipcMain.handle(CHANNELS.workspaceSetActiveContext, async (_event, workspaceId?: string, tabId?: string) => {
+    await workspaceService.setActiveContext(workspaceId, tabId);
+    return true;
+  });
+
   ipcMain.handle(CHANNELS.browserNavigate, async (_event, workspace: Workspace, tabId: string, url: string) => {
     browserViewManager.openTab(mainWindow, workspace, tabId, url);
     return true;

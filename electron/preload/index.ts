@@ -11,7 +11,9 @@ const api = {
       ipcRenderer.invoke(CHANNELS.workspaceUpdate, workspaceId, patch),
     remove: (workspaceId: string): Promise<boolean> => ipcRenderer.invoke(CHANNELS.workspaceDelete, workspaceId),
     persistTabs: (workspaceId: string, tabs: Workspace['tabs']): Promise<boolean> =>
-      ipcRenderer.invoke(CHANNELS.workspacePersistTabs, workspaceId, tabs)
+      ipcRenderer.invoke(CHANNELS.workspacePersistTabs, workspaceId, tabs),
+    setActiveContext: (workspaceId?: string, tabId?: string): Promise<boolean> =>
+      ipcRenderer.invoke(CHANNELS.workspaceSetActiveContext, workspaceId, tabId)
   },
   browser: {
     navigate: (workspace: Workspace, tabId: string, url: string): Promise<boolean> =>
