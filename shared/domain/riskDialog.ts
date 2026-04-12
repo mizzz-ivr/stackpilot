@@ -23,7 +23,7 @@ export const openRiskDialog = (state: RiskDialogState, request: RiskConfirmation
   };
 };
 
-export const resolveRiskDialog = (state: RiskDialogState, decision: RiskDialogDecision): RiskDialogState => ({
+export const resolveRiskDialog = (_state: RiskDialogState, decision: RiskDialogDecision): RiskDialogState => ({
   isOpen: false,
   currentRequest: undefined,
   lastDecision: decision
