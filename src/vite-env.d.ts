@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import type { ApiLogEntry, AppSnapshot, CreateWorkspaceInput, Workspace } from '../shared/contracts';
+import type { RiskConfirmationRequest } from '../shared/domain/risk';
 
 declare global {
   interface Window {
@@ -18,6 +19,10 @@ declare global {
       apiLog: {
         list: (workspaceId: string) => Promise<ApiLogEntry[]>;
         subscribe: (handler: (entry: ApiLogEntry) => void) => () => void;
+      };
+      riskGuard: {
+        subscribe: (handler: (request: RiskConfirmationRequest) => void) => () => void;
+        resolve: (confirmationId: string, allow: boolean) => Promise<boolean>;
       };
     };
   }

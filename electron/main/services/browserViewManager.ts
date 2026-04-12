@@ -31,7 +31,7 @@ export class BrowserViewManager {
     });
 
     const targetSession = session.fromPartition(workspace.partition);
-    this.apiLogService.attachSession(targetSession, workspace.id, (webContentsId) => {
+    this.apiLogService.attachSession(targetSession, workspace, (webContentsId) => {
       const hit = [...this.views.entries()].find(([, v]) => v.webContents.id === webContentsId);
       return hit?.[0].split(':')[1];
     });

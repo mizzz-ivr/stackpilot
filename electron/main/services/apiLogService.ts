@@ -1,10 +1,19 @@
 import { randomUUID } from 'node:crypto';
-import type { ApiLogEntry } from '../../../shared/contracts';
+import type { ApiLogEntry, Workspace } from '../../../shared/contracts';
 import type { Session } from 'electron';
+import { evaluateRequestRisk, toRequestPath, type RiskConfirmationRequest } from '../../../shared/domain/risk';
 
-type RequestMeta = { startedAt: number; workspaceId: string; tabId: string; type: ApiLogEntry['type'] };
+type RequestMeta = {
+  startedAt: number;
+  workspaceId: string;
+  workspaceName: string;
+  environmentType: Workspace['environmentType'];
+  tabId: string;
+  type: ApiLogEntry['type'];
+};
 
 type LogListener = (entry: ApiLogEntry) => void;
+export type ConfirmRiskHandler = (request: RiskConfirmationRequest) => Promise<boolean>;
 
 export class ApiLogService {
   private logs: ApiLogEntry[] = [];
@@ -12,18 +21,65 @@ export class ApiLogService {
   private attachedSessions = new WeakSet<Session>();
   private listeners = new Set<LogListener>();
 
-  attachSession(session: Session, workspaceId: string, tabIdResolver: (webContentsId: number) => string | undefined): void {
+  private confirmRiskHandler?: ConfirmRiskHandler;
+
+  constructor(confirmRiskHandler?: ConfirmRiskHandler) {
+    this.confirmRiskHandler = confirmRiskHandler;
+  }
+
+  setConfirmRiskHandler(handler: ConfirmRiskHandler): void {
+    this.confirmRiskHandler = handler;
+  }
+
+  attachSession(session: Session, workspace: Workspace, tabIdResolver: (webContentsId: number) => string | undefined): void {
     if (this.attachedSessions.has(session)) {
       return;
     }
     this.attachedSessions.add(session);
 
     session.webRequest.onBeforeRequest((details, callback) => {
-      const tabId = tabIdResolver(details.webContentsId ?? -1) ?? 'unknown';
-      const resourceType = details.resourceType;
-      const type = resourceType === 'xhr' ? 'xhr' : 'other';
-      this.requestMap.set(details.id, { startedAt: Date.now(), workspaceId, tabId, type });
-      callback({ cancel: false });
+      const run = async (): Promise<void> => {
+        const tabId = tabIdResolver(details.webContentsId ?? -1) ?? 'unknown';
+        const risk = evaluateRequestRisk({
+          environmentType: workspace.environmentType,
+          method: details.method,
+          url: details.url
+        });
+
+        if (risk.shouldConfirm && this.confirmRiskHandler) {
+          const level = risk.level === 'none' ? 'warning' : risk.level;
+          const reasonCode = risk.reasonCode === 'none' ? 'prod-mutating' : risk.reasonCode;
+          const allow = await this.confirmRiskHandler({
+            confirmationId: `${details.id}:${Date.now()}`,
+            workspaceId: workspace.id,
+            workspaceName: workspace.name,
+            environmentType: workspace.environmentType,
+            method: details.method,
+            url: details.url,
+            path: toRequestPath(details.url),
+            level,
+            reasonCode
+          });
+          if (!allow) {
+            callback({ cancel: true });
+            return;
+          }
+        }
+
+        const resourceType = details.resourceType;
+        const type = resourceType === 'xhr' || resourceType === 'fetch' ? resourceType : 'other';
+        this.requestMap.set(details.id, {
+          startedAt: Date.now(),
+          workspaceId: workspace.id,
+          workspaceName: workspace.name,
+          environmentType: workspace.environmentType,
+          tabId,
+          type
+        });
+        callback({ cancel: false });
+      };
+
+      void run();
     });
 
     session.webRequest.onCompleted((details) => {

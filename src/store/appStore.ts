@@ -10,6 +10,14 @@ import {
   type InspectorState
 } from '../../shared/domain/inspector';
 import { completeWorkspaceSwitch, createInitialWorkspaceSwitchState, startWorkspaceSwitch } from '../../shared/domain/workspaceState';
+import {
+  createInitialRiskDialogState,
+  openRiskDialog,
+  resolveRiskDialog,
+  type RiskDialogDecision,
+  type RiskDialogState
+} from '../../shared/domain/riskDialog';
+import type { RiskConfirmationRequest } from '../../shared/domain/risk';
 
 interface CreateWorkspaceFormInput {
   name: string;
@@ -24,12 +32,15 @@ interface AppState {
   switchingWorkspaceId?: string;
   activeTabId?: string;
   inspector: InspectorState;
+  riskDialog: RiskDialogState;
   load: () => Promise<void>;
   selectWorkspace: (workspaceId: string) => Promise<void>;
   navigate: (url: string) => Promise<void>;
   openDevTools: () => Promise<void>;
   setInspectorFilter: (kind: InspectorFilter['kind']) => void;
   createWorkspace: (input: CreateWorkspaceFormInput) => Promise<void>;
+  requestRiskConfirmation: (request: RiskConfirmationRequest) => boolean;
+  resolveRiskConfirmation: (decision: RiskDialogDecision) => RiskConfirmationRequest | undefined;
 }
 
 let unsubscribeApiLog: undefined | (() => void);
@@ -37,6 +48,7 @@ let unsubscribeApiLog: undefined | (() => void);
 export const useAppStore = create<AppState>((set, get) => ({
   ...createInitialWorkspaceSwitchState(),
   inspector: createInitialInspectorState(),
+  riskDialog: createInitialRiskDialogState(),
   load: async () => {
     set((state) => ({ inspector: { ...state.inspector, isLoading: true, errorMessage: undefined } }));
 
@@ -135,6 +147,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       prodDomains: ['example.com']
     });
     await get().load();
+  },
+  requestRiskConfirmation: (request) => {
+    let opened = false;
+    set((state) => {
+      const next = openRiskDialog(state.riskDialog, request);
+      opened = next.isOpen && next.currentRequest?.confirmationId === request.confirmationId;
+      return { riskDialog: next };
+    });
+    return opened;
+  },
+  resolveRiskConfirmation: (decision) => {
+    const currentRequest = get().riskDialog.currentRequest;
+    if (!currentRequest) return undefined;
+    set((state) => ({ riskDialog: resolveRiskDialog(state.riskDialog, decision) }));
+    return currentRequest;
   }
 }));
 

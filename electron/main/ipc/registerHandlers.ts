@@ -4,6 +4,7 @@ import { CHANNELS } from './channels';
 import { WorkspaceService } from '../services/workspaceService';
 import { BrowserViewManager } from '../services/browserViewManager';
 import { ApiLogService } from '../services/apiLogService';
+import type { RiskConfirmationRequest } from '../../../shared/domain/risk';
 
 export const registerHandlers = (
   mainWindow: BrowserWindow,
@@ -11,6 +12,31 @@ export const registerHandlers = (
   browserViewManager: BrowserViewManager,
   apiLogService: ApiLogService
 ): void => {
+  const pendingRiskConfirmations = new Map<string, (allow: boolean) => void>();
+
+  apiLogService.setConfirmRiskHandler((request: RiskConfirmationRequest) => {
+    if (mainWindow.isDestroyed()) return Promise.resolve(false);
+
+    return new Promise<boolean>((resolve) => {
+      pendingRiskConfirmations.set(request.confirmationId, resolve);
+      mainWindow.webContents.send(CHANNELS.riskConfirmationRequested, request);
+      setTimeout(() => {
+        const resolver = pendingRiskConfirmations.get(request.confirmationId);
+        if (!resolver) return;
+        pendingRiskConfirmations.delete(request.confirmationId);
+        resolver(false);
+      }, 30_000);
+    });
+  });
+
+  ipcMain.handle(CHANNELS.riskConfirmationRespond, (_event, confirmationId: string, allow: boolean) => {
+    const resolver = pendingRiskConfirmations.get(confirmationId);
+    if (!resolver) return false;
+    pendingRiskConfirmations.delete(confirmationId);
+    resolver(Boolean(allow));
+    return true;
+  });
+
   ipcMain.handle(CHANNELS.workspaceList, () => workspaceService.getSnapshot());
 
   ipcMain.handle(CHANNELS.workspaceCreate, async (_event, input: CreateWorkspaceInput) => {
