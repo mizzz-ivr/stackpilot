@@ -10,6 +10,7 @@ type RequestMeta = {
   environmentType: Workspace['environmentType'];
   tabId: string;
   type: ApiLogEntry['type'];
+  requestHeaders: Record<string, string>;
 };
 
 type LogListener = (entry: ApiLogEntry) => void;
@@ -74,12 +75,21 @@ export class ApiLogService {
           workspaceName: workspace.name,
           environmentType: workspace.environmentType,
           tabId,
-          type
+          type,
+          requestHeaders: {}
         });
         callback({ cancel: false });
       };
 
       void run();
+    });
+
+    session.webRequest.onBeforeSendHeaders((details, callback) => {
+      const meta = this.requestMap.get(details.id);
+      if (meta) {
+        meta.requestHeaders = flattenHeaders(details.requestHeaders);
+      }
+      callback({ requestHeaders: details.requestHeaders });
     });
 
     session.webRequest.onCompleted((details) => {
@@ -97,7 +107,7 @@ export class ApiLogService {
         url: details.url,
         status: details.statusCode,
         durationMs: finishedAt - meta.startedAt,
-        requestHeaders: {},
+        requestHeaders: meta.requestHeaders,
         responseHeaders: flattenHeaders(details.responseHeaders),
         startedAt: meta.startedAt,
         finishedAt
@@ -123,7 +133,7 @@ export class ApiLogService {
         url: details.url,
         status: undefined,
         durationMs: finishedAt - meta.startedAt,
-        requestHeaders: {},
+        requestHeaders: meta.requestHeaders,
         responseHeaders: {},
         responseBodySnippet: details.error,
         startedAt: meta.startedAt,
