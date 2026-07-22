@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
 
+permissions:
+  contents: write
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -33,6 +36,18 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --fix-lockfile --no-frozen-lockfile
+
+      - name: Sync resolved lockfile to PR branch
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          if git diff --quiet -- pnpm-lock.yaml; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml
+          git commit -m "Expo依存をpnpm lockfileに反映"
+          git push origin "HEAD:${{ github.head_ref }}"
 
       - name: Upload resolved lockfile
         uses: actions/upload-artifact@v4
