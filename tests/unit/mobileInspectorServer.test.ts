@@ -75,11 +75,73 @@ describe('MobileInspectorServer', () => {
       headers: { authorization: `Bearer ${pairing.token}` }
     });
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      workspace: { id: workspace.id, name: workspace.name, environmentType: 'dev' },
+    const payload = await response.json() as { cursor: string; workspace: { id: string }; logs: ApiLogEntry[] };
+    expect(payload).toMatchObject({
+      workspace: { id: workspace.id },
       logs: [{ id: log.id, url: log.url }]
     });
+    expect(payload.cursor).toBeTypeOf('string');
+    expect(payload.cursor.length).toBeGreaterThan(0);
+    expect(response.headers.get('x-stackpilot-cursor')).toBe(payload.cursor);
     expect(server.getStatus().lastAccessAt).toBeTypeOf('number');
+  });
+
+  it('同じカーソルなら本文なしの304を返す', async () => {
+    const server = new MobileInspectorServer({
+      getSnapshot: () => snapshot,
+      listLogs: () => [log],
+      resolveLanAddress: () => '192.168.1.20',
+      tokenFactory: () => 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG',
+      ttlMs: 60_000
+    });
+    runningServers.push(server);
+
+    const status = await server.start();
+    const pairing = parseMobilePairingUri(status.pairingUri!);
+    const localBaseUrl = pairing.baseUrl.replace('192.168.1.20', '127.0.0.1');
+    const headers = { authorization: `Bearer ${pairing.token}` };
+
+    const initial = await fetch(`${localBaseUrl}/v1/mobile/inspector/snapshot`, { headers });
+    const payload = await initial.json() as { cursor: string };
+    const unchanged = await fetch(
+      `${localBaseUrl}/v1/mobile/inspector/snapshot?cursor=${encodeURIComponent(payload.cursor)}`,
+      { headers }
+    );
+
+    expect(unchanged.status).toBe(304);
+    expect(await unchanged.text()).toBe('');
+    expect(unchanged.headers.get('x-stackpilot-cursor')).toBe(payload.cursor);
+    expect(unchanged.headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('ログが増えた場合は新しいカーソルで200を返す', async () => {
+    let logs: ApiLogEntry[] = [log];
+    const server = new MobileInspectorServer({
+      getSnapshot: () => snapshot,
+      listLogs: () => logs,
+      resolveLanAddress: () => '192.168.1.20',
+      tokenFactory: () => 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG',
+      ttlMs: 60_000
+    });
+    runningServers.push(server);
+
+    const status = await server.start();
+    const pairing = parseMobilePairingUri(status.pairingUri!);
+    const localBaseUrl = pairing.baseUrl.replace('192.168.1.20', '127.0.0.1');
+    const headers = { authorization: `Bearer ${pairing.token}` };
+    const initial = await fetch(`${localBaseUrl}/v1/mobile/inspector/snapshot`, { headers });
+    const firstPayload = await initial.json() as { cursor: string };
+
+    logs = [{ ...log, id: 'log-2', startedAt: 100, finishedAt: 142 }, log];
+    const updated = await fetch(
+      `${localBaseUrl}/v1/mobile/inspector/snapshot?cursor=${encodeURIComponent(firstPayload.cursor)}`,
+      { headers }
+    );
+    const secondPayload = await updated.json() as { cursor: string; logs: ApiLogEntry[] };
+
+    expect(updated.status).toBe(200);
+    expect(secondPayload.cursor).not.toBe(firstPayload.cursor);
+    expect(secondPayload.logs[0]?.id).toBe('log-2');
   });
 
   it('期限切れtokenを拒否する', async () => {
