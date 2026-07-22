@@ -58,7 +58,7 @@ export const useInspectorSnapshot = (): InspectorSnapshotState => {
   const [nextRefreshDelayMs, setNextRefreshDelayMs] = useState<number>();
   const [lastCheckedAt, setLastCheckedAt] = useState<number>();
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number>();
-  const cursorRef = useRef<string>();
+  const cursorRef = useRef<string | undefined>(undefined);
   const requestSequenceRef = useRef(0);
   const failureCountRef = useRef(0);
   const autoRefreshStoppedRef = useRef(false);
