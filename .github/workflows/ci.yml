@@ -11,7 +11,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -34,6 +34,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --fix-lockfile --no-frozen-lockfile
 
+      - name: Upload resolved lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: pnpm-lockfile-${{ github.sha }}
+          path: pnpm-lock.yaml
+          retention-days: 1
+
       - name: Lint
         run: pnpm lint
 
@@ -43,5 +50,11 @@ jobs:
       - name: Test
         run: pnpm test
 
-      - name: Build
+      - name: Build desktop
         run: pnpm build
+
+      - name: Typecheck mobile
+        run: pnpm mobile:typecheck
+
+      - name: Build mobile web
+        run: pnpm mobile:build
