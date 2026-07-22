@@ -1,8 +1,8 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { networkInterfaces } from 'node:os';
-import type { ApiLogEntry, AppSnapshot } from '../../../shared/contracts';
-import type { MobileInspectorPayload } from '../../../shared/domain/mobileInspector';
+import type { ApiLogEntry, AppSnapshot, Workspace } from '../../../shared/contracts';
+import type { MobileInspectorPayload, MobileWorkspaceSummary } from '../../../shared/domain/mobileInspector';
 import {
   createMobilePairingUri,
   type MobilePairingServerStatus
@@ -10,6 +10,7 @@ import {
 
 const defaultPairingTtlMs = 10 * 60 * 1000;
 const maxRequestsPerMinute = 120;
+const snapshotPath = '/v1/mobile/inspector/snapshot';
 
 export interface MobileInspectorServerDependencies {
   getSnapshot: () => AppSnapshot;
@@ -170,7 +171,8 @@ export class MobileInspectorServer {
       return;
     }
 
-    if (request.method !== 'GET' || request.url !== '/v1/mobile/inspector/snapshot') {
+    const requestUrl = parseRequestUrl(request.url);
+    if (request.method !== 'GET' || requestUrl.pathname !== snapshotPath) {
       sendJson(response, 404, { error: 'not_found' });
       return;
     }
@@ -195,6 +197,14 @@ export class MobileInspectorServer {
 
     const lastAccessAt = this.now();
     this.setStatus({ ...this.status, lastAccessAt });
+    response.setHeader('X-Stackpilot-Cursor', payload.cursor);
+
+    const requestedCursor = requestUrl.searchParams.get('cursor');
+    if (requestedCursor && requestedCursor === payload.cursor) {
+      sendNotModified(response);
+      return;
+    }
+
     sendJson(response, 200, payload);
   }
 
@@ -204,15 +214,14 @@ export class MobileInspectorServer {
       snapshot.workspaces.find((item) => item.id === snapshot.activeWorkspaceId) ?? snapshot.workspaces[0];
     if (!workspace) return undefined;
 
+    const summary = toMobileWorkspaceSummary(workspace);
+    const logs = this.dependencies.listLogs(workspace.id).slice(0, 500);
+
     return {
-      workspace: {
-        id: workspace.id,
-        name: workspace.name,
-        environmentType: workspace.environmentType,
-        customEnvironmentLabel: workspace.customEnvironmentLabel
-      },
-      logs: this.dependencies.listLogs(workspace.id).slice(0, 500),
-      capturedAt: this.now()
+      workspace: summary,
+      logs,
+      capturedAt: this.now(),
+      cursor: createSnapshotCursor(summary, logs)
     };
   }
 
@@ -257,6 +266,31 @@ export const isPrivateIpv4Address = (address: string): boolean => {
 export const isPrivateOrLoopbackAddress = (address: string): boolean =>
   address === '127.0.0.1' || address === '::1' || isPrivateIpv4Address(address);
 
+const toMobileWorkspaceSummary = (workspace: Workspace): MobileWorkspaceSummary => ({
+  id: workspace.id,
+  name: workspace.name,
+  environmentType: workspace.environmentType,
+  customEnvironmentLabel: workspace.customEnvironmentLabel
+});
+
+const createSnapshotCursor = (workspace: MobileWorkspaceSummary, logs: ApiLogEntry[]): string =>
+  createHash('sha256')
+    .update(
+      JSON.stringify({
+        workspace,
+        logs: logs.map((log) => [log.id, log.status, log.finishedAt ?? log.startedAt])
+      })
+    )
+    .digest('base64url');
+
+const parseRequestUrl = (value?: string): URL => {
+  try {
+    return new URL(value ?? '/', 'http://localhost');
+  } catch {
+    return new URL('http://localhost/invalid');
+  }
+};
+
 const normalizeRemoteAddress = (address?: string): string | undefined => {
   if (!address) return undefined;
   return address.startsWith('::ffff:') ? address.slice(7) : address;
@@ -279,4 +313,9 @@ const setSecurityHeaders = (response: ServerResponse): void => {
 const sendJson = (response: ServerResponse, statusCode: number, payload: unknown): void => {
   response.statusCode = statusCode;
   response.end(JSON.stringify(payload));
+};
+
+const sendNotModified = (response: ServerResponse): void => {
+  response.statusCode = 304;
+  response.end();
 };

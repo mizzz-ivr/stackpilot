@@ -21,7 +21,18 @@ Expo Goで開発用QRコードを読み込んで起動してください。
 4. Mobileアプリの`QRで接続`を開く
 5. Desktopに表示されたペアリングQRコードを読み取る
 
-ペアリング後は、DesktopでactiveになっているWorkspaceのAPIログを取得します。Workspaceを切り替えた場合は、Mobileで再読み込みすると新しいWorkspaceへ追従します。
+ペアリング後は、DesktopでactiveになっているWorkspaceのAPIログを自動取得します。Workspaceを切り替えた場合も、次回の自動取得時に新しいWorkspaceへ追従します。
+
+## 自動更新
+
+- 接続成功時は2秒間隔で更新を確認します
+- 更新カーソルが同じ場合、Desktop APIは本文なしの`304 Not Modified`を返します
+- 通信失敗時は2秒、4秒、8秒、15秒の順で再試行間隔を伸ばします
+- 接続が回復すると2秒間隔へ戻ります
+- アプリがバックグラウンドの間は自動取得を停止します
+- フォアグラウンドへ戻ると即時に最新状態を取得します
+- ペアリング期限切れ時は自動更新を停止し、再ペアリングを案内します
+- `今すぐ更新`とPull to Refreshは引き続き利用できます
 
 ## セキュリティ
 
@@ -43,7 +54,7 @@ Expo Goで開発用QRコードを読み込んで起動してください。
 DesktopのQRコードから接続先と短命tokenを取得し、以下へアクセスします。
 
 ```text
-GET {Desktop LAN URL}/v1/mobile/inspector/snapshot
+GET {Desktop LAN URL}/v1/mobile/inspector/snapshot?cursor={last cursor}
 Authorization: Bearer {short-lived token}
 ```
 
@@ -74,6 +85,8 @@ pnpm mobile:build
 - フルブラウザ機能
 - デスクトップ同等のDevTools
 - リクエスト再送
+- WebSocket / Server-Sent Events
+- バックグラウンド常時通信
 - インターネット越しの接続
 - クラウド中継
 - App Store / EAS Build設定

@@ -14,19 +14,31 @@ export interface MobileInspectorPayload {
   workspace: MobileWorkspaceSummary;
   logs: ApiLogEntry[];
   capturedAt: number;
+  cursor: string;
 }
 
 export interface MobileInspectorSnapshot {
   workspace: MobileWorkspaceSummary;
   logs: NetworkLog[];
   capturedAt: number;
+  cursor: string;
 }
 
 export const toMobileInspectorSnapshot = (payload: MobileInspectorPayload): MobileInspectorSnapshot => ({
   workspace: payload.workspace,
-  logs: payload.logs.map(toNetworkLog),
-  capturedAt: payload.capturedAt
+  logs: deduplicateNetworkLogs(payload.logs.map(toNetworkLog)),
+  capturedAt: payload.capturedAt,
+  cursor: payload.cursor
 });
+
+export const deduplicateNetworkLogs = (logs: NetworkLog[]): NetworkLog[] => {
+  const seen = new Set<string>();
+  return logs.filter((log) => {
+    if (seen.has(log.id)) return false;
+    seen.add(log.id);
+    return true;
+  });
+};
 
 export const isMobileInspectorPayload = (value: unknown): value is MobileInspectorPayload => {
   if (!isRecord(value) || !isRecord(value.workspace) || !Array.isArray(value.logs)) return false;
@@ -39,6 +51,8 @@ export const isMobileInspectorPayload = (value: unknown): value is MobileInspect
     environmentTypes.includes(workspace.environmentType as EnvironmentType) &&
     (workspace.customEnvironmentLabel === undefined || typeof workspace.customEnvironmentLabel === 'string') &&
     typeof value.capturedAt === 'number' &&
+    typeof value.cursor === 'string' &&
+    value.cursor.length > 0 &&
     value.logs.every(isApiLogEntry)
   );
 };
