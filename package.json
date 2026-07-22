@@ -17,7 +17,13 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "lint": "eslint .",
-    "package": "pnpm build && electron-builder"
+    "package": "pnpm build && electron-builder",
+    "mobile": "pnpm --dir apps/mobile start",
+    "mobile:ios": "pnpm --dir apps/mobile ios",
+    "mobile:android": "pnpm --dir apps/mobile android",
+    "mobile:web": "pnpm --dir apps/mobile web",
+    "mobile:typecheck": "pnpm --dir apps/mobile typecheck",
+    "mobile:build": "pnpm --dir apps/mobile build"
   },
   "build": {
     "appId": "com.stackpilot.app",

@@ -11,7 +11,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -27,21 +27,25 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: |
-            pnpm-lock.yaml
-            **/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
-        run: pnpm install --fix-lockfile --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
         run: pnpm lint
 
-      - name: Typecheck
+      - name: Typecheck desktop
         run: pnpm typecheck
 
       - name: Test
         run: pnpm test
 
-      - name: Build
+      - name: Build desktop
         run: pnpm build
+
+      - name: Typecheck mobile
+        run: pnpm mobile:typecheck
+
+      - name: Build mobile web
+        run: pnpm mobile:build

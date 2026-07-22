@@ -1,0 +1,13 @@
+{
+  "name": "@stackpilot/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./contracts": "./contracts.ts",
+    "./domain/environment": "./domain/environment.ts",
+    "./domain/inspector": "./domain/inspector.ts",
+    "./domain/mobile-inspector": "./domain/mobileInspector.ts"
+  }
+}

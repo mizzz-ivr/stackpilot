@@ -10,7 +10,9 @@ module.exports = [
       'dist-electron/**',
       'build/**',
       'coverage/**',
-      'node_modules/**'
+      'node_modules/**',
+      'apps/mobile/dist/**',
+      'apps/mobile/.expo/**'
     ]
   },
   {
@@ -28,7 +30,7 @@ module.exports = [
     }
   },
   {
-    files: ['src/**/*.{ts,tsx}'],
+    files: ['src/**/*.{ts,tsx}', 'apps/mobile/src/**/*.{ts,tsx}'],
     languageOptions: {
       globals: {
         ...globals.browser

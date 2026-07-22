@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Stackpilot Inspector",
+    "slug": "stackpilot-inspector",
+    "version": "0.1.0",
+    "scheme": "stackpilot",
+    "orientation": "default",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.stackpilot.inspector"
+    },
+    "android": {
+      "package": "com.stackpilot.inspector"
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
