@@ -45,7 +45,22 @@ jobs:
         run: pnpm build
 
       - name: Typecheck mobile
-        run: pnpm mobile:typecheck
+        id: mobile-typecheck
+        shell: bash
+        run: |
+          set +e
+          pnpm mobile:typecheck 2>&1 | tee mobile-typecheck.log
+          status=${PIPESTATUS[0]}
+          exit "$status"
+
+      - name: Upload mobile typecheck log
+        if: failure() && steps.mobile-typecheck.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-typecheck-log
+          path: mobile-typecheck.log
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Build mobile web
         run: pnpm mobile:build
