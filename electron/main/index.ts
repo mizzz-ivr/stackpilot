@@ -4,11 +4,13 @@ import { JsonRepository } from './persistence/jsonRepository';
 import { WorkspaceService } from './services/workspaceService';
 import { ApiLogService } from './services/apiLogService';
 import { BrowserViewManager } from './services/browserViewManager';
+import { MobileInspectorServer } from './services/mobileInspectorServer';
 import { registerHandlers } from './ipc/registerHandlers';
 import type { SessionSnapshot } from '../../shared/domain/sessionRestore';
 
 let mainWindow: BrowserWindow | null = null;
 let workspaceService: WorkspaceService | null = null;
+let mobileInspectorServer: MobileInspectorServer | null = null;
 
 const createWindow = async (): Promise<void> => {
   const dataPath = join(app.getPath('userData'), 'workspace.snapshot.json');
@@ -18,6 +20,10 @@ const createWindow = async (): Promise<void> => {
 
   const apiLogService = new ApiLogService();
   const browserViewManager = new BrowserViewManager(apiLogService);
+  mobileInspectorServer = new MobileInspectorServer({
+    getSnapshot: () => workspaceService!.getSnapshot(),
+    listLogs: (workspaceId) => apiLogService.list(workspaceId)
+  });
 
   mainWindow = new BrowserWindow({
     width: 1480,
@@ -30,7 +36,7 @@ const createWindow = async (): Promise<void> => {
     }
   });
 
-  registerHandlers(mainWindow, workspaceService, browserViewManager, apiLogService);
+  registerHandlers(mainWindow, workspaceService, browserViewManager, apiLogService, mobileInspectorServer);
 
   mainWindow.on('resize', () => browserViewManager.resize(mainWindow!));
 
@@ -42,6 +48,7 @@ app.whenReady().then(createWindow);
 
 app.on('before-quit', () => {
   void workspaceService?.persist();
+  void mobileInspectorServer?.stop();
 });
 
 app.on('window-all-closed', () => {
