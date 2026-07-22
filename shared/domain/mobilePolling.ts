@@ -5,7 +5,7 @@ export type MobileAutoRefreshState = 'disabled' | 'active' | 'backoff' | 'paused
 export const getMobilePollingDelay = (failureCount: number): number => {
   const normalized = Number.isFinite(failureCount) ? Math.max(0, Math.floor(failureCount)) : 0;
   const index = Math.min(normalized, mobilePollingDelaysMs.length - 1);
-  return mobilePollingDelaysMs[index];
+  return mobilePollingDelaysMs[index] ?? mobilePollingDelaysMs[0];
 };
 
 export const nextMobilePollingFailureCount = (failureCount: number): number =>
