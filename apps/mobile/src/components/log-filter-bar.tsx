@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import {
   hasActiveMobileLogFilters,
@@ -139,7 +140,7 @@ export const LogFilterBar = ({
 
 interface FilterRowProps {
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 const FilterRow = ({ label, children }: FilterRowProps) => (
