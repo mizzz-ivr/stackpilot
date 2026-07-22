@@ -9,6 +9,7 @@ export const demoInspectorSnapshot: MobileInspectorSnapshot = {
     environmentType: 'stg'
   },
   capturedAt: now,
+  cursor: 'demo-workspace:initial',
   logs: [
     {
       id: 'log-users',
