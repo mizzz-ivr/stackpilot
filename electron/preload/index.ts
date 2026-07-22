@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { ApiLogEntry, AppSnapshot, CreateWorkspaceInput, Workspace } from '../../shared/contracts';
 import { CHANNELS } from '../main/ipc/channels';
 import type { RiskConfirmationRequest } from '../../shared/domain/risk';
+import type { MobilePairingServerStatus } from '../../shared/domain/mobilePairing';
 
 const api = {
   workspace: {
@@ -26,6 +27,16 @@ const api = {
       const listener = (_event: Electron.IpcRendererEvent, entry: ApiLogEntry) => handler(entry);
       ipcRenderer.on(CHANNELS.apiLogReceived, listener);
       return () => ipcRenderer.removeListener(CHANNELS.apiLogReceived, listener);
+    }
+  },
+  mobilePairing: {
+    getStatus: (): Promise<MobilePairingServerStatus> => ipcRenderer.invoke(CHANNELS.mobilePairingGetStatus),
+    start: (): Promise<MobilePairingServerStatus> => ipcRenderer.invoke(CHANNELS.mobilePairingStart),
+    stop: (): Promise<MobilePairingServerStatus> => ipcRenderer.invoke(CHANNELS.mobilePairingStop),
+    subscribe: (handler: (status: MobilePairingServerStatus) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: MobilePairingServerStatus) => handler(status);
+      ipcRenderer.on(CHANNELS.mobilePairingStatusChanged, listener);
+      return () => ipcRenderer.removeListener(CHANNELS.mobilePairingStatusChanged, listener);
     }
   },
   riskGuard: {
