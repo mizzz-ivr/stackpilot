@@ -4,13 +4,15 @@ import { CHANNELS } from './channels';
 import { WorkspaceService } from '../services/workspaceService';
 import { BrowserViewManager } from '../services/browserViewManager';
 import { ApiLogService } from '../services/apiLogService';
+import { MobileInspectorServer } from '../services/mobileInspectorServer';
 import type { RiskConfirmationRequest } from '../../../shared/domain/risk';
 
 export const registerHandlers = (
   mainWindow: BrowserWindow,
   workspaceService: WorkspaceService,
   browserViewManager: BrowserViewManager,
-  apiLogService: ApiLogService
+  apiLogService: ApiLogService,
+  mobileInspectorServer: MobileInspectorServer
 ): void => {
   const pendingRiskConfirmations = new Map<string, (allow: boolean) => void>();
 
@@ -72,6 +74,16 @@ export const registerHandlers = (
   });
 
   ipcMain.handle(CHANNELS.apiLogList, (_event, workspaceId: string) => apiLogService.list(workspaceId));
+
+  ipcMain.handle(CHANNELS.mobilePairingGetStatus, () => mobileInspectorServer.getStatus());
+  ipcMain.handle(CHANNELS.mobilePairingStart, () => mobileInspectorServer.start());
+  ipcMain.handle(CHANNELS.mobilePairingStop, () => mobileInspectorServer.stop());
+
+  mobileInspectorServer.onStatus((status) => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(CHANNELS.mobilePairingStatusChanged, status);
+    }
+  });
 
   apiLogService.onLog((entry) => {
     mainWindow.webContents.send(CHANNELS.apiLogReceived, entry);
