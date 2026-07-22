@@ -16,6 +16,7 @@ export default function RootLayout() {
         }}
       >
         <Stack.Screen name="index" options={{ title: 'Stackpilot Inspector' }} />
+        <Stack.Screen name="pair" options={{ title: 'Desktopと接続', presentation: 'modal' }} />
         <Stack.Screen name="logs/[id]" options={{ title: '通信詳細', presentation: 'card' }} />
       </Stack>
     </InspectorProvider>
