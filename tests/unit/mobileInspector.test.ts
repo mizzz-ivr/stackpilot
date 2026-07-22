@@ -47,7 +47,8 @@ describe('mobile inspector contract', () => {
   });
 
   it('カーソルがないpayloadを拒否する', () => {
-    const { cursor: _cursor, ...withoutCursor } = validPayload;
+    const withoutCursor: Record<string, unknown> = { ...validPayload };
+    delete withoutCursor.cursor;
     expect(isMobileInspectorPayload(withoutCursor)).toBe(false);
   });
 
