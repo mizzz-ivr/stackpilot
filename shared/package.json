@@ -9,6 +9,7 @@
     "./domain/environment": "./domain/environment.ts",
     "./domain/inspector": "./domain/inspector.ts",
     "./domain/mobile-inspector": "./domain/mobileInspector.ts",
+    "./domain/mobile-log-filters": "./domain/mobileLogFilters.ts",
     "./domain/mobile-pairing": "./domain/mobilePairing.ts",
     "./domain/mobile-polling": "./domain/mobilePolling.ts"
   }
