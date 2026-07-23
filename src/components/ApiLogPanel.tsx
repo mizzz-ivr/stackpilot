@@ -16,6 +16,10 @@ import {
   formatRequestBodyUnavailableReason,
   type SafeRequestBodyPreview
 } from '../../shared/domain/requestBody';
+import {
+  formatResponseBodyUnavailableReason,
+  type SafeResponseBodyPreview
+} from '../../shared/domain/responseBody';
 import { selectFilteredLogs, selectSelectedLog, useAppStore } from '../store/appStore';
 
 const filterButtons: InspectorFilter['kind'][] = ['all', 'xhr', 'fetch'];
@@ -84,10 +88,47 @@ const RequestBodyBlock = ({ requestBody }: { requestBody?: SafeRequestBodyPrevie
   );
 };
 
+const ResponseBodyBlock = ({
+  responseBody,
+  fallbackBody
+}: {
+  responseBody?: SafeResponseBodyPreview;
+  fallbackBody?: string;
+}) => {
+  if (!responseBody) {
+    return <PayloadBlock preview={createPayloadPreview(fallbackBody)} />;
+  }
+
+  if (responseBody.kind === 'unavailable') {
+    return (
+      <div className="space-y-1 text-xs text-slate-500">
+        <p>{formatResponseBodyUnavailableReason(responseBody.unavailableReason)}</p>
+        {responseBody.contentType ? <p>Content-Type: {responseBody.contentType}</p> : null}
+        <p>{responseBody.byteLength} bytes</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+        <span>JSON</span>
+        <span>{responseBody.byteLength} bytes</span>
+        {responseBody.contentType ? <span>{responseBody.contentType}</span> : null}
+      </div>
+      <PayloadBlock preview={createPayloadPreview(responseBody.content)} />
+      {responseBody.redactedFieldPaths.length > 0 ? (
+        <p className="break-all text-[11px] text-amber-300">
+          マスキング項目: {responseBody.redactedFieldPaths.join(', ')}
+        </p>
+      ) : null}
+    </div>
+  );
+};
+
 const LogDetails = ({ log }: { log?: NetworkLog }) => {
   const requestHeaders = useMemo(() => toHeaderEntries(log?.requestHeaders ?? {}), [log?.requestHeaders]);
   const responseHeaders = useMemo(() => toHeaderEntries(log?.responseHeaders ?? {}), [log?.responseHeaders]);
-  const payload = useMemo(() => createPayloadPreview(log?.responseBodySnippet), [log?.responseBodySnippet]);
 
   if (!log) {
     return (
@@ -127,7 +168,7 @@ const LogDetails = ({ log }: { log?: NetworkLog }) => {
 
       <section className="space-y-2">
         <h3 className="text-xs font-semibold text-slate-300">Response body preview</h3>
-        <PayloadBlock preview={payload} />
+        <ResponseBodyBlock responseBody={log.responseBody} fallbackBody={log.responseBodySnippet} />
       </section>
     </div>
   );
@@ -153,7 +194,7 @@ export const ApiLogPanel = () => {
     <aside className="flex h-full w-[420px] min-w-[340px] max-w-[42vw] flex-col border-l border-slate-800 bg-slate-950/80">
       <div className="border-b border-slate-800 px-3 py-2">
         <h2 className="text-sm font-semibold text-slate-100">API Inspector</h2>
-        <p className="text-xs text-slate-400">通信を選択してヘッダーと本文スニペットを確認</p>
+        <p className="text-xs text-slate-400">通信を選択してヘッダーと安全化済み本文を確認</p>
       </div>
 
       <div className="flex items-center gap-2 border-b border-slate-800 px-3 py-2">
