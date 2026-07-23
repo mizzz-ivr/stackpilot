@@ -13,6 +13,7 @@
     "./domain/mobile-log-filters": "./domain/mobileLogFilters.ts",
     "./domain/mobile-pairing": "./domain/mobilePairing.ts",
     "./domain/mobile-polling": "./domain/mobilePolling.ts",
-    "./domain/request-body": "./domain/requestBody.ts"
+    "./domain/request-body": "./domain/requestBody.ts",
+    "./domain/response-body": "./domain/responseBody.ts"
   }
 }
