@@ -53,6 +53,29 @@ Expo Goで開発用QRコードを読み込んで起動してください。
 - Workspaceを切り替えると固定状態はリセットされます
 - 固定状態は端末へ永続保存しません
 
+## 通信情報のコピー・共有
+
+通信詳細の`調査アクション`から以下を利用できます。
+
+- URLをクリップボードへコピー
+- 取得済みResponse bodyが正しいJSONの場合、整形済みJSONをコピー
+- Method、URL、Request headersからcURLを生成してコピー
+- Method、Status、Duration、URL、安全化済みcURLを標準共有シートで共有
+
+cURL生成時は以下の機密ヘッダーを`<redacted>`へ置換します。
+
+- `Authorization`
+- `Proxy-Authorization`
+- `Cookie`
+- `Set-Cookie`
+- `X-API-Key`
+- `API-Key`
+- `X-Auth-Token`
+- `X-CSRF-Token`
+- `X-XSRF-Token`
+
+`Host`、`Content-Length`、`Connection`は再実行時の不整合を避けるためcURLから除外します。現在の通信ログにはRequest bodyが含まれないため、生成したcURLにもbodyは含まれません。Response JSONには機密情報が含まれる可能性があるため、コピー後の共有先を確認してください。
+
 ## セキュリティ
 
 - DesktopのローカルAPIは既定で停止しています
@@ -104,6 +127,9 @@ pnpm mobile:build
 - フルブラウザ機能
 - デスクトップ同等のDevTools
 - リクエスト再送
+- Request body取得
+- 機密ヘッダーを伏字なしでコピーする機能
+- HAR / JSONファイル出力
 - 正規表現検索
 - Header・Response Body全文検索
 - 固定ログの永続化
