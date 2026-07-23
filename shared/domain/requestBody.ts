@@ -77,12 +77,11 @@ export const isSensitiveRequestBodyFieldName = (name: string): boolean => {
 export const createSafeRequestBodyPreview = (
   input: CreateSafeRequestBodyPreviewInput
 ): SafeRequestBodyPreview | undefined => {
-  if (input.byteLength <= 0) return undefined;
-
   const contentType = normalizeRequestBodyContentType(input.contentType);
   if (input.unsupportedUpload) {
     return unavailablePreview('unsupported-upload-data', input.byteLength, contentType);
   }
+  if (input.byteLength <= 0) return undefined;
   if (input.tooLarge || input.byteLength > maxCapturedRequestBodyBytes) {
     return unavailablePreview('body-too-large', input.byteLength, contentType, true);
   }
