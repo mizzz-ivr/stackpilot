@@ -89,7 +89,7 @@ export class MobileInspectorServer {
 
       await new Promise<void>((resolve, reject) => {
         server.once('error', reject);
-        server.listen(0, '0.0.0.0', () => {
+        server.listen(0, '0.0.0', () => {
           server.off('error', reject);
           resolve();
         });
@@ -278,7 +278,11 @@ const createSnapshotCursor = (workspace: MobileWorkspaceSummary, logs: ApiLogEnt
     .update(
       JSON.stringify({
         workspace,
-        logs: logs.map((log) => [log.id, log.status, log.finishedAt ?? log.startedAt])
+        logs: logs.map((log) => [
+          log.id,
+          log.status,
+          log.updatedAt ?? log.finishedAt ?? log.startedAt
+        ])
       })
     )
     .digest('base64url');
