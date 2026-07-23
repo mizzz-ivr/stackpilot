@@ -87,7 +87,8 @@ const isApiLogEntry = (value: unknown): value is ApiLogEntry => {
     (value.status === undefined || typeof value.status === 'number') &&
     (value.durationMs === undefined || typeof value.durationMs === 'number') &&
     (value.responseBodySnippet === undefined || typeof value.responseBodySnippet === 'string') &&
-    (value.finishedAt === undefined || typeof value.finishedAt === 'number')
+    (value.finishedAt === undefined || typeof value.finishedAt === 'number') &&
+    (value.updatedAt === undefined || typeof value.updatedAt === 'number')
   );
 };
 
