@@ -36,7 +36,22 @@ jobs:
         run: pnpm lint
 
       - name: Typecheck desktop
-        run: pnpm typecheck
+        id: desktop-typecheck
+        shell: bash
+        run: |
+          set +e
+          pnpm typecheck 2>&1 | tee desktop-typecheck.log
+          status=${PIPESTATUS[0]}
+          exit "$status"
+
+      - name: Upload desktop typecheck log
+        if: failure() && steps.desktop-typecheck.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-typecheck-log
+          path: desktop-typecheck.log
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Test
         run: pnpm test
