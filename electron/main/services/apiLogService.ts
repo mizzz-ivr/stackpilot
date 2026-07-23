@@ -7,8 +7,14 @@ import {
   createSafeRequestBodyPreview,
   maxCapturedRequestBodyBytes
 } from '../../../shared/domain/requestBody';
+import {
+  createUnavailableResponseBodyPreview,
+  type ResponseBodyUnavailableReason,
+  type SafeResponseBodyPreview
+} from '../../../shared/domain/responseBody';
 import type { Session } from 'electron';
 import { evaluateRequestRisk, toRequestPath, type RiskConfirmationRequest } from '../../../shared/domain/risk';
+import type { CapturedResponseBody } from './responseBodyCaptureService';
 
 type PendingUploadCapture = {
   rawBody?: string;
@@ -43,6 +49,8 @@ export class ApiLogService {
   private requestMap = new Map<number, RequestMeta>();
   private attachedSessions = new WeakSet<Session>();
   private listeners = new Set<LogListener>();
+  private pendingResponseBodies = new Map<string, SafeResponseBodyPreview[]>();
+  private responseCaptureUnavailableReasons = new Map<string, ResponseBodyUnavailableReason>();
 
   private confirmRiskHandler?: ConfirmRiskHandler;
 
@@ -52,6 +60,57 @@ export class ApiLogService {
 
   setConfirmRiskHandler(handler: ConfirmRiskHandler): void {
     this.confirmRiskHandler = handler;
+  }
+
+  setResponseCaptureStatus(
+    workspaceId: string,
+    tabId: string,
+    unavailableReason?: ResponseBodyUnavailableReason
+  ): void {
+    const key = responseCaptureStatusKey(workspaceId, tabId);
+    if (unavailableReason) {
+      this.responseCaptureUnavailableReasons.set(key, unavailableReason);
+    } else {
+      this.responseCaptureUnavailableReasons.delete(key);
+    }
+  }
+
+  applyCapturedResponseBody(capture: CapturedResponseBody): void {
+    const logIndex = this.logs.findIndex(
+      (entry) =>
+        entry.workspaceId === capture.workspaceId &&
+        entry.tabId === capture.tabId &&
+        entry.method.toUpperCase() === capture.method.toUpperCase() &&
+        entry.url === capture.url &&
+        entry.status === capture.status &&
+        entry.responseBody === undefined
+    );
+
+    if (logIndex >= 0) {
+      const updated: ApiLogEntry = {
+        ...this.logs[logIndex],
+        responseBody: capture.responseBody
+      };
+      this.logs[logIndex] = updated;
+      this.emit(updated);
+      return;
+    }
+
+    const key = responseBodyKey(capture);
+    const pending = this.pendingResponseBodies.get(key) ?? [];
+    pending.push(capture.responseBody);
+    this.pendingResponseBodies.set(key, pending.slice(-20));
+
+    setTimeout(() => {
+      const current = this.pendingResponseBodies.get(key);
+      if (!current) return;
+      const remaining = current.filter((item) => item !== capture.responseBody);
+      if (remaining.length > 0) {
+        this.pendingResponseBodies.set(key, remaining);
+      } else {
+        this.pendingResponseBodies.delete(key);
+      }
+    }, 5000);
   }
 
   attachSession(session: Session, workspace: Workspace, tabIdResolver: (webContentsId: number) => string | undefined): void {
@@ -133,6 +192,13 @@ export class ApiLogService {
       this.requestMap.delete(details.id);
 
       const finishedAt = Date.now();
+      const responseBody = this.takePendingResponseBody({
+        workspaceId: meta.workspaceId,
+        tabId: meta.tabId,
+        method: details.method,
+        url: details.url,
+        status: details.statusCode
+      }) ?? this.createCaptureUnavailablePreview(meta.workspaceId, meta.tabId);
       const entry: ApiLogEntry = {
         id: randomUUID(),
         workspaceId: meta.workspaceId,
@@ -145,13 +211,12 @@ export class ApiLogService {
         requestHeaders: meta.requestHeaders,
         requestBody: meta.requestBody,
         responseHeaders: flattenHeaders(details.responseHeaders),
+        responseBody,
         startedAt: meta.startedAt,
         finishedAt
       };
 
-      this.logs.unshift(entry);
-      this.logs = this.logs.slice(0, 5000);
-      this.listeners.forEach((listener) => listener(entry));
+      this.addLog(entry);
     });
 
     session.webRequest.onErrorOccurred((details) => {
@@ -177,9 +242,7 @@ export class ApiLogService {
         finishedAt
       };
 
-      this.logs.unshift(entry);
-      this.logs = this.logs.slice(0, 5000);
-      this.listeners.forEach((listener) => listener(entry));
+      this.addLog(entry);
     });
   }
 
@@ -191,7 +254,59 @@ export class ApiLogService {
   list(workspaceId: string): ApiLogEntry[] {
     return this.logs.filter((item) => item.workspaceId === workspaceId);
   }
+
+  private takePendingResponseBody(input: {
+    workspaceId: string;
+    tabId: string;
+    method: string;
+    url: string;
+    status?: number;
+  }): SafeResponseBodyPreview | undefined {
+    const key = responseBodyKey(input);
+    const pending = this.pendingResponseBodies.get(key);
+    const responseBody = pending?.shift();
+    if (!pending?.length) this.pendingResponseBodies.delete(key);
+    return responseBody;
+  }
+
+  private createCaptureUnavailablePreview(
+    workspaceId: string,
+    tabId: string
+  ): SafeResponseBodyPreview | undefined {
+    const reason = this.responseCaptureUnavailableReasons.get(
+      responseCaptureStatusKey(workspaceId, tabId)
+    );
+    return reason ? createUnavailableResponseBodyPreview(reason) : undefined;
+  }
+
+  private addLog(entry: ApiLogEntry): void {
+    this.logs.unshift(entry);
+    this.logs = this.logs.slice(0, 5000);
+    this.emit(entry);
+  }
+
+  private emit(entry: ApiLogEntry): void {
+    this.listeners.forEach((listener) => listener(entry));
+  }
 }
+
+const responseBodyKey = (input: {
+  workspaceId: string;
+  tabId: string;
+  method: string;
+  url: string;
+  status?: number;
+}): string =>
+  [
+    input.workspaceId,
+    input.tabId,
+    input.method.toUpperCase(),
+    input.url,
+    input.status ?? 'unknown'
+  ].join('\u0000');
+
+const responseCaptureStatusKey = (workspaceId: string, tabId: string): string =>
+  `${workspaceId}\u0000${tabId}`;
 
 const captureMemoryUploadData = (uploadData?: UploadDataItem[]): PendingUploadCapture | undefined => {
   if (!uploadData?.length) return undefined;
