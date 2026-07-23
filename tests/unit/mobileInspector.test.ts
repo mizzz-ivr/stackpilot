@@ -19,11 +19,19 @@ const validPayload: MobileInspectorPayload = {
       workspaceId: 'workspace-1',
       tabId: 'tab-1',
       type: 'fetch',
-      method: 'GET',
-      url: 'https://dev.example.com/api/health',
+      method: 'POST',
+      url: 'https://dev.example.com/api/users',
       status: 200,
       durationMs: 42,
-      requestHeaders: { accept: 'application/json' },
+      requestHeaders: { 'content-type': 'application/json' },
+      requestBody: {
+        kind: 'json',
+        contentType: 'application/json',
+        content: '{"name":"Mizzz","password":"<redacted>"}',
+        byteLength: 52,
+        isTruncated: false,
+        redactedFieldPaths: ['password']
+      },
       responseHeaders: { 'content-type': 'application/json' },
       responseBodySnippet: '{"ok":true}',
       startedAt: 900,
@@ -61,7 +69,11 @@ describe('mobile inspector contract', () => {
     expect(snapshot.logs[0]).toMatchObject({
       id: 'log-1',
       resourceType: 'fetch',
-      requestHeaders: { accept: 'application/json' },
+      requestHeaders: { 'content-type': 'application/json' },
+      requestBody: {
+        kind: 'json',
+        redactedFieldPaths: ['password']
+      },
       responseHeaders: { 'content-type': 'application/json' }
     });
   });
@@ -82,5 +94,32 @@ describe('mobile inspector contract', () => {
     };
 
     expect(isMobileInspectorPayload(invalidPayload)).toBe(false);
+  });
+
+  it('Request bodyの型・理由・伏字パスが不正なpayloadを拒否する', () => {
+    expect(
+      isMobileInspectorPayload({
+        ...validPayload,
+        logs: [{ ...validPayload.logs[0], requestBody: { kind: 'raw', content: 'secret' } }]
+      })
+    ).toBe(false);
+
+    expect(
+      isMobileInspectorPayload({
+        ...validPayload,
+        logs: [
+          {
+            ...validPayload.logs[0],
+            requestBody: {
+              kind: 'unavailable',
+              byteLength: 100,
+              isTruncated: false,
+              redactedFieldPaths: [],
+              unavailableReason: 'unknown-reason'
+            }
+          }
+        ]
+      })
+    ).toBe(false);
   });
 });
