@@ -8,6 +8,10 @@ import {
   formatRequestBodyUnavailableReason,
   type SafeRequestBodyPreview
 } from './requestBody';
+import {
+  formatResponseBodyUnavailableReason,
+  type SafeResponseBodyPreview
+} from './responseBody';
 
 const sensitiveHeaderNames = new Set([
   'authorization',
@@ -34,8 +38,10 @@ export interface MobileLogActionArtifacts {
   summary: string;
   redactedHeaderNames: string[];
   redactedRequestBodyFieldPaths: string[];
+  redactedResponseBodyFieldPaths: string[];
   requestBodyIncluded: boolean;
   requestBodyNote: string;
+  responseBodyNote: string;
 }
 
 export const isSensitiveHeaderName = (name: string): boolean =>
@@ -89,16 +95,21 @@ export const createMobileLogActionArtifacts = (log: NetworkLog): MobileLogAction
     .sort((left, right) => left.localeCompare(right));
   const requestBodyIncluded = canIncludeRequestBodyInCurl(log.requestBody);
   const requestBodyNote = createRequestBodyNote(log.requestBody, requestBodyIncluded);
+  const responseBodyNote = createResponseBodyNote(log.responseBody);
   const statusLabel = log.status ?? '通信エラー';
 
   return {
     url: log.url,
-    json: createCopyableJson(log.responseBodySnippet),
+    json: log.responseBody?.kind === 'json'
+      ? createCopyableJson(log.responseBody.content)
+      : undefined,
     curl,
     redactedHeaderNames,
     redactedRequestBodyFieldPaths: log.requestBody?.redactedFieldPaths ?? [],
+    redactedResponseBodyFieldPaths: log.responseBody?.redactedFieldPaths ?? [],
     requestBodyIncluded,
     requestBodyNote,
+    responseBodyNote,
     summary: [
       'Stackpilot Inspector',
       `${formatMethodLabel(log.method)} ${statusLabel} · ${formatDurationLabel(log.durationMs)}`,
@@ -108,7 +119,8 @@ export const createMobileLogActionArtifacts = (log: NetworkLog): MobileLogAction
       'cURL（機密ヘッダー・Request body項目は伏字）',
       curl,
       '',
-      requestBodyNote
+      requestBodyNote,
+      responseBodyNote
     ].join('\n')
   };
 };
@@ -124,6 +136,16 @@ const createRequestBodyNote = (
       : '注: Request bodyを含みます。';
   }
   return `注: Request bodyはcURLに含めていません。${formatRequestBodyUnavailableReason(requestBody.unavailableReason)}`;
+};
+
+const createResponseBodyNote = (responseBody?: SafeResponseBodyPreview): string => {
+  if (!responseBody) return '注: Response bodyは取得されていません。';
+  if (responseBody.kind === 'unavailable') {
+    return `注: ${formatResponseBodyUnavailableReason(responseBody.unavailableReason)}`;
+  }
+  return responseBody.redactedFieldPaths.length > 0
+    ? `注: Response bodyは安全化済みです。マスキング項目: ${responseBody.redactedFieldPaths.join(', ')}`
+    : '注: Response bodyは安全化済みです。';
 };
 
 const quoteShellArgument = (value: string): string =>
