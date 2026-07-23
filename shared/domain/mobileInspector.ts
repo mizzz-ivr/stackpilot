@@ -8,6 +8,12 @@ import {
   type RequestBodyUnavailableReason,
   type SafeRequestBodyPreview
 } from './requestBody';
+import {
+  responseBodyKinds,
+  responseBodyUnavailableReasons,
+  type ResponseBodyUnavailableReason,
+  type SafeResponseBodyPreview
+} from './responseBody';
 
 export interface MobileWorkspaceSummary {
   id: string;
@@ -76,6 +82,7 @@ const isApiLogEntry = (value: unknown): value is ApiLogEntry => {
     isStringRecord(value.requestHeaders) &&
     (value.requestBody === undefined || isSafeRequestBodyPreview(value.requestBody)) &&
     isStringRecord(value.responseHeaders) &&
+    (value.responseBody === undefined || isSafeResponseBodyPreview(value.responseBody)) &&
     typeof value.startedAt === 'number' &&
     (value.status === undefined || typeof value.status === 'number') &&
     (value.durationMs === undefined || typeof value.durationMs === 'number') &&
@@ -99,6 +106,24 @@ const isSafeRequestBodyPreview = (value: unknown): value is SafeRequestBodyPrevi
     (value.unavailableReason === undefined ||
       (typeof value.unavailableReason === 'string' &&
         requestBodyUnavailableReasons.includes(value.unavailableReason as RequestBodyUnavailableReason)))
+  );
+};
+
+const isSafeResponseBodyPreview = (value: unknown): value is SafeResponseBodyPreview => {
+  if (!isRecord(value) || typeof value.kind !== 'string') return false;
+
+  return (
+    responseBodyKinds.includes(value.kind as SafeResponseBodyPreview['kind']) &&
+    (value.contentType === undefined || typeof value.contentType === 'string') &&
+    (value.content === undefined || typeof value.content === 'string') &&
+    typeof value.byteLength === 'number' &&
+    value.byteLength >= 0 &&
+    typeof value.isTruncated === 'boolean' &&
+    Array.isArray(value.redactedFieldPaths) &&
+    value.redactedFieldPaths.every((path) => typeof path === 'string') &&
+    (value.unavailableReason === undefined ||
+      (typeof value.unavailableReason === 'string' &&
+        responseBodyUnavailableReasons.includes(value.unavailableReason as ResponseBodyUnavailableReason)))
   );
 };
 
