@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AppSnapshot, Workspace } from '../../shared/contracts';
+import type { ApiLogEntry, AppSnapshot, Workspace } from '../../shared/contracts';
 import type { EnvironmentType } from '../../shared/domain/environment';
 import {
   createInitialInspectorState,
@@ -8,7 +8,8 @@ import {
   findSelectedLog,
   toNetworkLog,
   type InspectorFilter,
-  type InspectorState
+  type InspectorState,
+  type NetworkLog
 } from '../../shared/domain/inspector';
 import { completeWorkspaceSwitch, createInitialWorkspaceSwitchState, startWorkspaceSwitch } from '../../shared/domain/workspaceState';
 import {
@@ -47,6 +48,13 @@ interface AppState {
 
 let unsubscribeApiLog: undefined | (() => void);
 
+const upsertInspectorLog = (logs: NetworkLog[], entry: ApiLogEntry): NetworkLog[] => {
+  const next = toNetworkLog(entry);
+  const existingIndex = logs.findIndex((log) => log.id === next.id);
+  if (existingIndex < 0) return [next, ...logs].slice(0, 500);
+  return logs.map((log, index) => (index === existingIndex ? next : log));
+};
+
 export const useAppStore = create<AppState>((set, get) => ({
   ...createInitialWorkspaceSwitchState(),
   inspector: createInitialInspectorState(),
@@ -75,7 +83,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         set((state) => ({
           inspector: {
             ...state.inspector,
-            logs: [toNetworkLog(entry), ...state.inspector.logs].slice(0, 500)
+            logs: upsertInspectorLog(state.inspector.logs, entry)
           }
         }));
       });
