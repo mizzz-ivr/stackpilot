@@ -5,6 +5,7 @@ import { toNetworkLog, type NetworkLog } from './inspector';
 import {
   requestBodyKinds,
   requestBodyUnavailableReasons,
+  type RequestBodyUnavailableReason,
   type SafeRequestBodyPreview
 } from './requestBody';
 
@@ -97,7 +98,7 @@ const isSafeRequestBodyPreview = (value: unknown): value is SafeRequestBodyPrevi
     value.redactedFieldPaths.every((path) => typeof path === 'string') &&
     (value.unavailableReason === undefined ||
       (typeof value.unavailableReason === 'string' &&
-        requestBodyUnavailableReasons.includes(value.unavailableReason as SafeRequestBodyPreview['unavailableReason'])))
+        requestBodyUnavailableReasons.includes(value.unavailableReason as RequestBodyUnavailableReason)))
   );
 };
 
