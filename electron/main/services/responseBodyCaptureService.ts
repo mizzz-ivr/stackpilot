@@ -105,7 +105,7 @@ export class ResponseBodyCaptureService {
     const onMessage = (_event: Event, method: string, params: unknown): void => {
       void this.handleMessage(context, method, params);
     };
-    const onDetach = (_event: Event, _reason: string): void => {
+    const onDetach = (): void => {
       context.isAttached = false;
       context.candidates.clear();
       if (webContents.isDestroyed()) return;
