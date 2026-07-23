@@ -53,13 +53,37 @@ Expo Goで開発用QRコードを読み込んで起動してください。
 - Workspaceを切り替えると固定状態はリセットされます
 - 固定状態は端末へ永続保存しません
 
+## Request bodyの安全な取得
+
+Desktop版では、以下の条件を満たすRequest bodyだけをメモリ上で取得します。
+
+- `application/json`
+- `application/*+json`
+- `application/x-www-form-urlencoded`
+- Electronのmemory upload bytes
+- 最大16KiB
+- UTF-8として読み取れる内容
+
+以下は内容を取得せず、取得不可理由だけを表示します。
+
+- `multipart/form-data`
+- file / blob upload
+- binary body
+- `text/plain`
+- 16KiBを超えるbody
+- JSONとして解析できないbody
+
+raw bodyはRequest headers確定後に安全化し、元データを破棄します。ディスク保存やログ出力は行いません。
+
+JSONとform-urlencodedでは、password、secret、token、API key、Cookie、session、CSRF等の項目を`<redacted>`へ置換します。JSONはネストしたオブジェクトや配列も再帰的に処理します。
+
 ## 通信情報のコピー・共有
 
 通信詳細の`調査アクション`から以下を利用できます。
 
 - URLをクリップボードへコピー
 - 取得済みResponse bodyが正しいJSONの場合、整形済みJSONをコピー
-- Method、URL、Request headersからcURLを生成してコピー
+- Method、URL、Request headers、安全化済みRequest bodyからcURLを生成してコピー
 - Method、Status、Duration、URL、安全化済みcURLを標準共有シートで共有
 
 cURL生成時は以下の機密ヘッダーを`<redacted>`へ置換します。
@@ -74,7 +98,7 @@ cURL生成時は以下の機密ヘッダーを`<redacted>`へ置換します。
 - `X-CSRF-Token`
 - `X-XSRF-Token`
 
-`Host`、`Content-Length`、`Connection`は再実行時の不整合を避けるためcURLから除外します。現在の通信ログにはRequest bodyが含まれないため、生成したcURLにもbodyは含まれません。Response JSONには機密情報が含まれる可能性があるため、コピー後の共有先を確認してください。
+`Host`、`Content-Length`、`Connection`は再実行時の不整合を避けるためcURLから除外します。安全化に成功したRequest bodyだけを`--data-raw`へ追加し、16KiB超過・対象外形式・解析失敗時はbodyを追加しません。Response JSONには機密情報が含まれる可能性があるため、コピー後の共有先を確認してください。
 
 ## セキュリティ
 
@@ -84,6 +108,7 @@ cURL生成時は以下の機密ヘッダーを`<redacted>`へ置換します。
 - QRコードとtokenは10分後、Desktopで停止した時、またはDesktopアプリ終了時に無効になります
 - 接続情報はiOS Keychain / Android Keystoreを利用するSecureStoreへ保存します
 - QR画像やペアリング文字列を第三者へ共有しないでください
+- Request bodyのraw値は永続化・ログ出力しません
 
 ## 表示モード
 
@@ -127,8 +152,9 @@ pnpm mobile:build
 - フルブラウザ機能
 - デスクトップ同等のDevTools
 - リクエスト再送
-- Request body取得
-- 機密ヘッダーを伏字なしでコピーする機能
+- multipart / file / blob / binary Request body取得
+- 16KiBを超えるRequest bodyの内容表示
+- 機密ヘッダーやRequest body項目を伏字なしでコピーする機能
 - HAR / JSONファイル出力
 - 正規表現検索
 - Header・Response Body全文検索
