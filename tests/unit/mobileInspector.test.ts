@@ -33,7 +33,14 @@ const validPayload: MobileInspectorPayload = {
         redactedFieldPaths: ['password']
       },
       responseHeaders: { 'content-type': 'application/json' },
-      responseBodySnippet: '{"ok":true}',
+      responseBody: {
+        kind: 'json',
+        contentType: 'application/json',
+        content: '{"ok":true,"access_token":"<redacted>"}',
+        byteLength: 48,
+        isTruncated: false,
+        redactedFieldPaths: ['access_token']
+      },
       startedAt: 900,
       finishedAt: 942
     }
@@ -74,7 +81,11 @@ describe('mobile inspector contract', () => {
         kind: 'json',
         redactedFieldPaths: ['password']
       },
-      responseHeaders: { 'content-type': 'application/json' }
+      responseHeaders: { 'content-type': 'application/json' },
+      responseBody: {
+        kind: 'json',
+        redactedFieldPaths: ['access_token']
+      }
     });
   });
 
@@ -111,6 +122,33 @@ describe('mobile inspector contract', () => {
           {
             ...validPayload.logs[0],
             requestBody: {
+              kind: 'unavailable',
+              byteLength: 100,
+              isTruncated: false,
+              redactedFieldPaths: [],
+              unavailableReason: 'unknown-reason'
+            }
+          }
+        ]
+      })
+    ).toBe(false);
+  });
+
+  it('Response bodyの型・理由・マスキングパスが不正なpayloadを拒否する', () => {
+    expect(
+      isMobileInspectorPayload({
+        ...validPayload,
+        logs: [{ ...validPayload.logs[0], responseBody: { kind: 'text', content: 'secret' } }]
+      })
+    ).toBe(false);
+
+    expect(
+      isMobileInspectorPayload({
+        ...validPayload,
+        logs: [
+          {
+            ...validPayload.logs[0],
+            responseBody: {
               kind: 'unavailable',
               byteLength: 100,
               isTruncated: false,
