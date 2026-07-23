@@ -1,14 +1,22 @@
 import { BrowserView, BrowserWindow, session } from 'electron';
 import type { Workspace } from '../../../shared/contracts';
 import { ApiLogService } from './apiLogService';
+import { ResponseBodyCaptureService } from './responseBodyCaptureService';
 
 type ActiveTab = { view: BrowserView; workspaceId: string; tabId: string };
 
 export class BrowserViewManager {
   private activeTab?: ActiveTab;
   private views = new Map<string, BrowserView>();
+  private readonly responseBodyCaptureService: ResponseBodyCaptureService;
 
-  constructor(private readonly apiLogService: ApiLogService) {}
+  constructor(private readonly apiLogService: ApiLogService) {
+    this.responseBodyCaptureService = new ResponseBodyCaptureService({
+      onCapture: (capture) => this.apiLogService.applyCapturedResponseBody(capture),
+      onStatusChange: ({ workspaceId, tabId, unavailableReason }) =>
+        this.apiLogService.setResponseCaptureStatus(workspaceId, tabId, unavailableReason)
+    });
+  }
 
   openTab(window: BrowserWindow, workspace: Workspace, tabId: string, url: string): BrowserView {
     const key = `${workspace.id}:${tabId}`;
@@ -37,6 +45,7 @@ export class BrowserViewManager {
     });
 
     this.views.set(key, view);
+    this.responseBodyCaptureService.attach(view.webContents, workspace.id, tabId);
     window.setBrowserView(view);
     view.webContents.loadURL(url);
     this.resize(window, view);
