@@ -36,7 +36,14 @@ const log: NetworkLog = {
   responseHeaders: {
     'content-type': 'application/json'
   },
-  responseBodySnippet: '{"id":1,"name":"Mizzz"}',
+  responseBody: {
+    kind: 'json',
+    contentType: 'application/json',
+    content: '{"id":1,"name":"Mizzz","access_token":"<redacted>"}',
+    byteLength: 72,
+    isTruncated: false,
+    redactedFieldPaths: ['access_token']
+  },
   startedAt: Date.UTC(2026, 6, 23, 1, 2, 3),
   finishedAt: Date.UTC(2026, 6, 23, 1, 2, 3, 184)
 };
@@ -90,17 +97,37 @@ describe('mobile log actions', () => {
     expect(unavailable).not.toContain('--data-raw');
   });
 
-  it('共有サマリーに通信情報と安全なcURLを含める', () => {
+  it('安全化済みResponse bodyだけをJSONコピー対象にする', () => {
+    const artifacts = createMobileLogActionArtifacts(log);
+    const unavailable = createMobileLogActionArtifacts({
+      ...log,
+      responseBody: {
+        kind: 'unavailable',
+        contentType: 'application/json',
+        byteLength: 70_000,
+        isTruncated: true,
+        redactedFieldPaths: [],
+        unavailableReason: 'body-too-large'
+      }
+    });
+
+    expect(artifacts.json).toContain('"access_token": "<redacted>"');
+    expect(artifacts.json).not.toContain('secret-response-token');
+    expect(unavailable.json).toBeUndefined();
+  });
+
+  it('共有サマリーに通信情報と安全化状況を含める', () => {
     const artifacts = createMobileLogActionArtifacts(log);
 
     expect(artifacts.url).toBe(log.url);
-    expect(artifacts.json).toContain('"name": "Mizzz"');
     expect(artifacts.redactedHeaderNames).toEqual(['authorization', 'Cookie', 'x-api-key']);
     expect(artifacts.redactedRequestBodyFieldPaths).toEqual(['password']);
+    expect(artifacts.redactedResponseBodyFieldPaths).toEqual(['access_token']);
     expect(artifacts.requestBodyIncluded).toBe(true);
     expect(artifacts.summary).toContain('POST 201 · 184ms');
     expect(artifacts.summary).toContain('cURL（機密ヘッダー・Request body項目は伏字）');
     expect(artifacts.summary).toContain('伏字項目: password');
+    expect(artifacts.summary).toContain('マスキング項目: access_token');
     expect(artifacts.summary).not.toContain('secret-token');
   });
 });
