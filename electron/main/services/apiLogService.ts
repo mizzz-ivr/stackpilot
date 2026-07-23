@@ -76,20 +76,23 @@ export class ApiLogService {
   }
 
   applyCapturedResponseBody(capture: CapturedResponseBody): void {
-    const logIndex = this.logs.findIndex(
-      (entry) =>
-        entry.workspaceId === capture.workspaceId &&
-        entry.tabId === capture.tabId &&
-        entry.method.toUpperCase() === capture.method.toUpperCase() &&
-        entry.url === capture.url &&
-        entry.status === capture.status &&
-        entry.responseBody === undefined
+    let logIndex = this.logs.findIndex((entry) =>
+      matchesCapturedResponse(entry, capture, true)
     );
+    if (logIndex < 0) {
+      logIndex = this.logs.findIndex((entry) =>
+        matchesCapturedResponse(entry, capture, false)
+      );
+    }
 
     if (logIndex >= 0) {
+      const current = this.logs[logIndex];
+      if (!current) return;
+
       const updated: ApiLogEntry = {
-        ...this.logs[logIndex],
-        responseBody: capture.responseBody
+        ...current,
+        responseBody: capture.responseBody,
+        updatedAt: Date.now()
       };
       this.logs[logIndex] = updated;
       this.emit(updated);
@@ -213,7 +216,8 @@ export class ApiLogService {
         responseHeaders: flattenHeaders(details.responseHeaders),
         responseBody,
         startedAt: meta.startedAt,
-        finishedAt
+        finishedAt,
+        updatedAt: finishedAt
       };
 
       this.addLog(entry);
@@ -239,7 +243,8 @@ export class ApiLogService {
         responseHeaders: {},
         responseBodySnippet: details.error,
         startedAt: meta.startedAt,
-        finishedAt
+        finishedAt,
+        updatedAt: finishedAt
       };
 
       this.addLog(entry);
@@ -289,6 +294,18 @@ export class ApiLogService {
     this.listeners.forEach((listener) => listener(entry));
   }
 }
+
+const matchesCapturedResponse = (
+  entry: ApiLogEntry,
+  capture: CapturedResponseBody,
+  requireStatusMatch: boolean
+): boolean =>
+  entry.workspaceId === capture.workspaceId &&
+  entry.tabId === capture.tabId &&
+  entry.method.toUpperCase() === capture.method.toUpperCase() &&
+  entry.url === capture.url &&
+  (!requireStatusMatch || entry.status === capture.status) &&
+  entry.responseBody === undefined;
 
 const responseBodyKey = (input: {
   workspaceId: string;
