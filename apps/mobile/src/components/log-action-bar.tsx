@@ -1,10 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Pressable, Share, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import {
-  createMobileLogActionArtifacts,
-  type NetworkLog
-} from '@stackpilot/shared/domain/mobile-log-actions';
+import { createMobileLogActionArtifacts } from '@stackpilot/shared/domain/mobile-log-actions';
+import type { NetworkLog } from '@stackpilot/shared/domain/inspector';
 import { colors } from '@/theme/colors';
 
 type ActionKey = 'url' | 'json' | 'curl' | 'share';
