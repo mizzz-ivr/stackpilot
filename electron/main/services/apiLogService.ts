@@ -91,7 +91,7 @@ export class ApiLogService {
         }
 
         const resourceType = details.resourceType;
-        const type: ApiLogEntry['type'] = resourceType === 'xhr' ? 'xhr' : resourceType === 'fetch' ? 'fetch' : 'other';
+        const type: ApiLogEntry['type'] = resourceType === 'xhr' ? 'xhr' : 'other';
         this.requestMap.set(details.id, {
           startedAt: Date.now(),
           workspaceId: workspace.id,
