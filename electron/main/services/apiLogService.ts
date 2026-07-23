@@ -1,7 +1,22 @@
+import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
+import { TextDecoder } from 'node:util';
 import type { ApiLogEntry, Workspace } from '../../../shared/contracts';
+import type { SafeRequestBodyPreview } from '../../../shared/domain/requestBody';
+import {
+  createSafeRequestBodyPreview,
+  maxCapturedRequestBodyBytes
+} from '../../../shared/domain/requestBody';
 import type { Session } from 'electron';
 import { evaluateRequestRisk, toRequestPath, type RiskConfirmationRequest } from '../../../shared/domain/risk';
+
+type PendingUploadCapture = {
+  rawBody?: string;
+  byteLength: number;
+  tooLarge: boolean;
+  unsupportedUpload: boolean;
+  decodeFailed: boolean;
+};
 
 type RequestMeta = {
   startedAt: number;
@@ -11,6 +26,13 @@ type RequestMeta = {
   tabId: string;
   type: ApiLogEntry['type'];
   requestHeaders: Record<string, string>;
+  requestBody?: SafeRequestBodyPreview;
+  pendingUpload?: PendingUploadCapture;
+};
+
+type UploadDataItem = {
+  bytes?: Buffer;
+  blobUUID?: string;
 };
 
 type LogListener = (entry: ApiLogEntry) => void;
@@ -39,6 +61,7 @@ export class ApiLogService {
     this.attachedSessions.add(session);
 
     session.webRequest.onBeforeRequest((details, callback) => {
+      const pendingUpload = captureMemoryUploadData(details.uploadData as UploadDataItem[] | undefined);
       const run = async (): Promise<void> => {
         const tabId = tabIdResolver(details.webContentsId ?? -1) ?? 'unknown';
         const risk = evaluateRequestRisk({
@@ -76,7 +99,8 @@ export class ApiLogService {
           environmentType: workspace.environmentType,
           tabId,
           type,
-          requestHeaders: {}
+          requestHeaders: {},
+          pendingUpload
         });
         callback({ cancel: false });
       };
@@ -88,6 +112,17 @@ export class ApiLogService {
       const meta = this.requestMap.get(details.id);
       if (meta) {
         meta.requestHeaders = flattenHeaders(details.requestHeaders);
+        if (meta.pendingUpload) {
+          meta.requestBody = createSafeRequestBodyPreview({
+            contentType: getHeaderValue(meta.requestHeaders, 'content-type'),
+            rawBody: meta.pendingUpload.rawBody,
+            byteLength: meta.pendingUpload.byteLength,
+            tooLarge: meta.pendingUpload.tooLarge,
+            unsupportedUpload: meta.pendingUpload.unsupportedUpload,
+            decodeFailed: meta.pendingUpload.decodeFailed
+          });
+          meta.pendingUpload = undefined;
+        }
       }
       callback({ requestHeaders: details.requestHeaders });
     });
@@ -108,6 +143,7 @@ export class ApiLogService {
         status: details.statusCode,
         durationMs: finishedAt - meta.startedAt,
         requestHeaders: meta.requestHeaders,
+        requestBody: meta.requestBody,
         responseHeaders: flattenHeaders(details.responseHeaders),
         startedAt: meta.startedAt,
         finishedAt
@@ -134,6 +170,7 @@ export class ApiLogService {
         status: undefined,
         durationMs: finishedAt - meta.startedAt,
         requestHeaders: meta.requestHeaders,
+        requestBody: meta.requestBody,
         responseHeaders: {},
         responseBodySnippet: details.error,
         startedAt: meta.startedAt,
@@ -155,6 +192,69 @@ export class ApiLogService {
     return this.logs.filter((item) => item.workspaceId === workspaceId);
   }
 }
+
+const captureMemoryUploadData = (uploadData?: UploadDataItem[]): PendingUploadCapture | undefined => {
+  if (!uploadData?.length) return undefined;
+
+  let byteLength = 0;
+  let unsupportedUpload = false;
+  const chunks: Buffer[] = [];
+
+  for (const item of uploadData) {
+    if (item.blobUUID || !item.bytes) {
+      unsupportedUpload = true;
+      continue;
+    }
+
+    const chunk = Buffer.from(item.bytes);
+    byteLength += chunk.byteLength;
+    if (byteLength <= maxCapturedRequestBodyBytes) {
+      chunks.push(chunk);
+    }
+  }
+
+  if (unsupportedUpload) {
+    return {
+      byteLength,
+      tooLarge: false,
+      unsupportedUpload: true,
+      decodeFailed: false
+    };
+  }
+
+  if (byteLength > maxCapturedRequestBodyBytes) {
+    return {
+      byteLength,
+      tooLarge: true,
+      unsupportedUpload: false,
+      decodeFailed: false
+    };
+  }
+
+  if (byteLength <= 0) return undefined;
+
+  try {
+    return {
+      rawBody: new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)),
+      byteLength,
+      tooLarge: false,
+      unsupportedUpload: false,
+      decodeFailed: false
+    };
+  } catch {
+    return {
+      byteLength,
+      tooLarge: false,
+      unsupportedUpload: false,
+      decodeFailed: true
+    };
+  }
+};
+
+const getHeaderValue = (headers: Record<string, string>, targetName: string): string | undefined => {
+  const target = targetName.toLowerCase();
+  return Object.entries(headers).find(([name]) => name.toLowerCase() === target)?.[1];
+};
 
 const flattenHeaders = (headers?: Record<string, string[] | string>): Record<string, string> => {
   if (!headers) return {};

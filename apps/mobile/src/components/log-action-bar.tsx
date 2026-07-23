@@ -72,13 +72,21 @@ export const LogActionBar = ({ log }: LogActionBarProps) => {
       <View style={{ gap: 3 }}>
         <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>調査アクション</Text>
         <Text selectable style={{ color: colors.subtle, fontSize: 11, lineHeight: 17 }}>
-          cURLは機密ヘッダーを伏字化し、Request bodyを含めずに生成します。
+          cURLは機密ヘッダーを伏字化し、安全に取得できたRequest bodyだけを含めます。
         </Text>
         {artifacts.redactedHeaderNames.length > 0 ? (
           <Text selectable style={{ color: colors.warning, fontSize: 10, lineHeight: 16 }}>
-            伏字対象: {artifacts.redactedHeaderNames.join(', ')}
+            伏字ヘッダー: {artifacts.redactedHeaderNames.join(', ')}
           </Text>
         ) : null}
+        {artifacts.redactedRequestBodyFieldPaths.length > 0 ? (
+          <Text selectable style={{ color: colors.warning, fontSize: 10, lineHeight: 16 }}>
+            伏字body項目: {artifacts.redactedRequestBodyFieldPaths.join(', ')}
+          </Text>
+        ) : null}
+        <Text selectable style={{ color: colors.subtle, fontSize: 10, lineHeight: 16 }}>
+          {artifacts.requestBodyNote}
+        </Text>
       </View>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -99,6 +107,7 @@ export const LogActionBar = ({ log }: LogActionBarProps) => {
           label="cURLをコピー"
           busy={busyAction === 'curl'}
           disabled={Boolean(busyAction)}
+          accessibilityHint={artifacts.requestBodyIncluded ? '安全化済みRequest bodyを含むcURLをコピーします' : 'Request bodyを含まないcURLをコピーします'}
           onPress={() => void copyText('curl', 'cURL', artifacts.curl)}
         />
         <ActionButton

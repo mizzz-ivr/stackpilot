@@ -1,4 +1,5 @@
 import type { EnvironmentType } from './domain/environment';
+import type { SafeRequestBodyPreview } from './domain/requestBody';
 
 export type EnvironmentLabel = EnvironmentType;
 
@@ -32,6 +33,7 @@ export interface ApiLogEntry {
   status?: number;
   durationMs?: number;
   requestHeaders: Record<string, string>;
+  requestBody?: SafeRequestBodyPreview;
   responseHeaders: Record<string, string>;
   responseBodySnippet?: string;
   startedAt: number;

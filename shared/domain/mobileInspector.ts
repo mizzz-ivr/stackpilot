@@ -2,6 +2,12 @@ import type { ApiLogEntry } from '../contracts';
 import type { EnvironmentType } from './environment';
 import { environmentTypes } from './environment';
 import { toNetworkLog, type NetworkLog } from './inspector';
+import {
+  requestBodyKinds,
+  requestBodyUnavailableReasons,
+  type RequestBodyUnavailableReason,
+  type SafeRequestBodyPreview
+} from './requestBody';
 
 export interface MobileWorkspaceSummary {
   id: string;
@@ -68,12 +74,31 @@ const isApiLogEntry = (value: unknown): value is ApiLogEntry => {
     typeof value.method === 'string' &&
     typeof value.url === 'string' &&
     isStringRecord(value.requestHeaders) &&
+    (value.requestBody === undefined || isSafeRequestBodyPreview(value.requestBody)) &&
     isStringRecord(value.responseHeaders) &&
     typeof value.startedAt === 'number' &&
     (value.status === undefined || typeof value.status === 'number') &&
     (value.durationMs === undefined || typeof value.durationMs === 'number') &&
     (value.responseBodySnippet === undefined || typeof value.responseBodySnippet === 'string') &&
     (value.finishedAt === undefined || typeof value.finishedAt === 'number')
+  );
+};
+
+const isSafeRequestBodyPreview = (value: unknown): value is SafeRequestBodyPreview => {
+  if (!isRecord(value) || typeof value.kind !== 'string') return false;
+
+  return (
+    requestBodyKinds.includes(value.kind as SafeRequestBodyPreview['kind']) &&
+    (value.contentType === undefined || typeof value.contentType === 'string') &&
+    (value.content === undefined || typeof value.content === 'string') &&
+    typeof value.byteLength === 'number' &&
+    value.byteLength >= 0 &&
+    typeof value.isTruncated === 'boolean' &&
+    Array.isArray(value.redactedFieldPaths) &&
+    value.redactedFieldPaths.every((path) => typeof path === 'string') &&
+    (value.unavailableReason === undefined ||
+      (typeof value.unavailableReason === 'string' &&
+        requestBodyUnavailableReasons.includes(value.unavailableReason as RequestBodyUnavailableReason)))
   );
 };
 

@@ -12,6 +12,10 @@ import {
   type NetworkLog,
   type PayloadPreview
 } from '../../shared/domain/inspector';
+import {
+  formatRequestBodyUnavailableReason,
+  type SafeRequestBodyPreview
+} from '../../shared/domain/requestBody';
 import { selectFilteredLogs, selectSelectedLog, useAppStore } from '../store/appStore';
 
 const filterButtons: InspectorFilter['kind'][] = ['all', 'xhr', 'fetch'];
@@ -51,6 +55,35 @@ const PayloadBlock = ({ preview }: { preview: PayloadPreview }) => {
   );
 };
 
+const RequestBodyBlock = ({ requestBody }: { requestBody?: SafeRequestBodyPreview }) => {
+  if (!requestBody || requestBody.kind === 'unavailable') {
+    return (
+      <div className="space-y-1 text-xs text-slate-500">
+        <p>{formatRequestBodyUnavailableReason(requestBody?.unavailableReason)}</p>
+        {requestBody?.contentType ? <p>Content-Type: {requestBody.contentType}</p> : null}
+        {requestBody ? <p>{requestBody.byteLength} bytes</p> : null}
+      </div>
+    );
+  }
+
+  const preview = createPayloadPreview(requestBody.content);
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+        <span>{requestBody.kind.toUpperCase()}</span>
+        <span>{requestBody.byteLength} bytes</span>
+        {requestBody.contentType ? <span>{requestBody.contentType}</span> : null}
+      </div>
+      <PayloadBlock preview={preview} />
+      {requestBody.redactedFieldPaths.length > 0 ? (
+        <p className="break-all text-[11px] text-amber-300">
+          伏字項目: {requestBody.redactedFieldPaths.join(', ')}
+        </p>
+      ) : null}
+    </div>
+  );
+};
+
 const LogDetails = ({ log }: { log?: NetworkLog }) => {
   const requestHeaders = useMemo(() => toHeaderEntries(log?.requestHeaders ?? {}), [log?.requestHeaders]);
   const responseHeaders = useMemo(() => toHeaderEntries(log?.responseHeaders ?? {}), [log?.responseHeaders]);
@@ -80,6 +113,11 @@ const LogDetails = ({ log }: { log?: NetworkLog }) => {
       <section className="space-y-2">
         <h3 className="text-xs font-semibold text-slate-300">Request headers</h3>
         <HeaderList entries={requestHeaders} emptyLabel="Request headersは取得されていません。" />
+      </section>
+
+      <section className="space-y-2">
+        <h3 className="text-xs font-semibold text-slate-300">Request body preview</h3>
+        <RequestBodyBlock requestBody={log.requestBody} />
       </section>
 
       <section className="space-y-2">

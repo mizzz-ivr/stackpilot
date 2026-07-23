@@ -6,3 +6,4 @@ export * from './domain/mobileLogActions';
 export * from './domain/mobileLogFilters';
 export * from './domain/mobilePairing';
 export * from './domain/mobilePolling';
+export * from './domain/requestBody';

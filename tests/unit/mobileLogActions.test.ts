@@ -18,11 +18,20 @@ const log: NetworkLog = {
   durationMs: 184,
   requestHeaders: {
     accept: 'application/json',
+    'content-type': 'application/json',
     authorization: 'Bearer secret-token',
     Cookie: 'session=secret-cookie',
     'content-length': '128',
     host: 'example.com',
     'x-api-key': 'secret-key'
+  },
+  requestBody: {
+    kind: 'json',
+    contentType: 'application/json',
+    content: '{"name":"Mizzz","password":"<redacted>"}',
+    byteLength: 52,
+    isTruncated: false,
+    redactedFieldPaths: ['password']
   },
   responseHeaders: {
     'content-type': 'application/json'
@@ -48,7 +57,7 @@ describe('mobile log actions', () => {
     expect(createCopyableJson()).toBeUndefined();
   });
 
-  it('cURLで機密ヘッダーを伏字にし、再現に不要なヘッダーを除外する', () => {
+  it('cURLで機密ヘッダーを伏字にし、安全化済みRequest bodyを含める', () => {
     const curl = buildRedactedCurlCommand(log);
 
     expect(curl).toContain('curl --request POST');
@@ -56,6 +65,7 @@ describe('mobile log actions', () => {
     expect(curl).toContain("--header 'authorization: <redacted>'");
     expect(curl).toContain("--header 'Cookie: <redacted>'");
     expect(curl).toContain("--header 'x-api-key: <redacted>'");
+    expect(curl).toContain("--data-raw '{\"name\":\"Mizzz\",\"password\":\"<redacted>\"}'");
     expect(curl).not.toContain('secret-token');
     expect(curl).not.toContain('secret-cookie');
     expect(curl).not.toContain('secret-key');
@@ -64,16 +74,33 @@ describe('mobile log actions', () => {
     expect(curl).toContain("'https://example.com/api/users?name=O'\\''Reilly'");
   });
 
+  it('取得不可または切り詰めbodyをcURLへ含めない', () => {
+    const unavailable = buildRedactedCurlCommand({
+      ...log,
+      requestBody: {
+        kind: 'unavailable',
+        contentType: 'application/json',
+        byteLength: 20_000,
+        isTruncated: true,
+        redactedFieldPaths: [],
+        unavailableReason: 'body-too-large'
+      }
+    });
+
+    expect(unavailable).not.toContain('--data-raw');
+  });
+
   it('共有サマリーに通信情報と安全なcURLを含める', () => {
     const artifacts = createMobileLogActionArtifacts(log);
 
     expect(artifacts.url).toBe(log.url);
     expect(artifacts.json).toContain('"name": "Mizzz"');
     expect(artifacts.redactedHeaderNames).toEqual(['authorization', 'Cookie', 'x-api-key']);
-    expect(artifacts.requestBodyIncluded).toBe(false);
+    expect(artifacts.redactedRequestBodyFieldPaths).toEqual(['password']);
+    expect(artifacts.requestBodyIncluded).toBe(true);
     expect(artifacts.summary).toContain('POST 201 · 184ms');
-    expect(artifacts.summary).toContain('cURL（機密ヘッダーは伏字）');
-    expect(artifacts.summary).toContain('Request bodyが含まれていません');
+    expect(artifacts.summary).toContain('cURL（機密ヘッダー・Request body項目は伏字）');
+    expect(artifacts.summary).toContain('伏字項目: password');
     expect(artifacts.summary).not.toContain('secret-token');
   });
 });

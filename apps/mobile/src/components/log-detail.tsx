@@ -9,6 +9,10 @@ import {
   type HeaderEntry,
   type NetworkLog
 } from '@stackpilot/shared/domain/inspector';
+import {
+  formatRequestBodyUnavailableReason,
+  type SafeRequestBodyPreview
+} from '@stackpilot/shared/domain/request-body';
 import { LogActionBar } from '@/components/log-action-bar';
 import { colors } from '@/theme/colors';
 
@@ -51,6 +55,60 @@ const HeaderSection = ({ title, entries }: HeaderSectionProps) => (
     )}
   </View>
 );
+
+const RequestBodySection = ({ requestBody }: { requestBody?: SafeRequestBodyPreview }) => {
+  const preview = createPayloadPreview(requestBody?.content);
+  const isUnavailable = !requestBody || requestBody.kind === 'unavailable';
+
+  return (
+    <View style={{ gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>Request body preview</Text>
+        {requestBody ? (
+          <Text selectable style={{ color: colors.subtle, fontSize: 11 }}>
+            {requestBody.kind.toUpperCase()} · {requestBody.byteLength} bytes
+          </Text>
+        ) : null}
+      </View>
+
+      <View
+        style={{
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 14,
+          backgroundColor: colors.surface,
+          padding: 12,
+          gap: 8,
+          borderCurve: 'continuous'
+        }}
+      >
+        {isUnavailable ? (
+          <Text selectable style={{ color: colors.subtle, fontSize: 12, lineHeight: 18 }}>
+            {formatRequestBodyUnavailableReason(requestBody?.unavailableReason)}
+          </Text>
+        ) : (
+          <Text
+            selectable
+            style={{ color: colors.text, fontSize: 12, lineHeight: 18, fontFamily: 'monospace' }}
+          >
+            {preview.content}
+          </Text>
+        )}
+
+        {requestBody?.contentType ? (
+          <Text selectable style={{ color: colors.subtle, fontSize: 10 }}>
+            Content-Type: {requestBody.contentType}
+          </Text>
+        ) : null}
+        {requestBody?.redactedFieldPaths.length ? (
+          <Text selectable style={{ color: colors.warning, fontSize: 10, lineHeight: 16 }}>
+            伏字項目: {requestBody.redactedFieldPaths.join(', ')}
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  );
+};
 
 interface LogDetailProps {
   log?: NetworkLog;
@@ -116,6 +174,7 @@ export const LogDetail = ({ log, embedded = false }: LogDetailProps) => {
       <LogActionBar log={log} />
 
       <HeaderSection title="Request headers" entries={requestHeaders} />
+      <RequestBodySection requestBody={log.requestBody} />
       <HeaderSection title="Response headers" entries={responseHeaders} />
 
       <View style={{ gap: 8 }}>
