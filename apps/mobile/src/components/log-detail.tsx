@@ -13,6 +13,10 @@ import {
   formatRequestBodyUnavailableReason,
   type SafeRequestBodyPreview
 } from '@stackpilot/shared/domain/request-body';
+import {
+  formatResponseBodyUnavailableReason,
+  type SafeResponseBodyPreview
+} from '@stackpilot/shared/domain/response-body';
 import { LogActionBar } from '@/components/log-action-bar';
 import { colors } from '@/theme/colors';
 
@@ -110,6 +114,75 @@ const RequestBodySection = ({ requestBody }: { requestBody?: SafeRequestBodyPrev
   );
 };
 
+const ResponseBodySection = ({
+  responseBody,
+  fallbackBody
+}: {
+  responseBody?: SafeResponseBodyPreview;
+  fallbackBody?: string;
+}) => {
+  const preview = createPayloadPreview(responseBody?.content ?? fallbackBody);
+  const isUnavailable = responseBody?.kind === 'unavailable';
+
+  return (
+    <View style={{ gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>Response body preview</Text>
+        {responseBody ? (
+          <Text selectable style={{ color: colors.subtle, fontSize: 11 }}>
+            {responseBody.kind.toUpperCase()} · {responseBody.byteLength} bytes
+          </Text>
+        ) : preview.kind !== 'empty' ? (
+          <Text selectable style={{ color: colors.subtle, fontSize: 11 }}>
+            {preview.kind === 'json' ? 'JSON' : 'TEXT'}
+          </Text>
+        ) : null}
+      </View>
+
+      <View
+        style={{
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 14,
+          backgroundColor: colors.surface,
+          padding: 12,
+          gap: 8,
+          borderCurve: 'continuous'
+        }}
+      >
+        {isUnavailable ? (
+          <Text selectable style={{ color: colors.subtle, fontSize: 12, lineHeight: 18 }}>
+            {formatResponseBodyUnavailableReason(responseBody.unavailableReason)}
+          </Text>
+        ) : (
+          <Text
+            selectable
+            style={{
+              color: preview.kind === 'empty' ? colors.subtle : colors.text,
+              fontSize: 12,
+              lineHeight: 18,
+              fontFamily: preview.kind === 'empty' ? undefined : 'monospace'
+            }}
+          >
+            {preview.content}
+          </Text>
+        )}
+
+        {responseBody?.contentType ? (
+          <Text selectable style={{ color: colors.subtle, fontSize: 10 }}>
+            Content-Type: {responseBody.contentType}
+          </Text>
+        ) : null}
+        {responseBody?.redactedFieldPaths.length ? (
+          <Text selectable style={{ color: colors.warning, fontSize: 10, lineHeight: 16 }}>
+            マスキング項目: {responseBody.redactedFieldPaths.join(', ')}
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  );
+};
+
 interface LogDetailProps {
   log?: NetworkLog;
   embedded?: boolean;
@@ -137,7 +210,6 @@ export const LogDetail = ({ log, embedded = false }: LogDetailProps) => {
 
   const requestHeaders = toHeaderEntries(log.requestHeaders);
   const responseHeaders = toHeaderEntries(log.responseHeaders);
-  const payload = createPayloadPreview(log.responseBodySnippet);
   const statusColor = statusColorMap[getStatusKind(log.status)];
 
   return (
@@ -176,40 +248,7 @@ export const LogDetail = ({ log, embedded = false }: LogDetailProps) => {
       <HeaderSection title="Request headers" entries={requestHeaders} />
       <RequestBodySection requestBody={log.requestBody} />
       <HeaderSection title="Response headers" entries={responseHeaders} />
-
-      <View style={{ gap: 8 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>Response body preview</Text>
-          {payload.kind !== 'empty' ? (
-            <Text selectable style={{ color: colors.subtle, fontSize: 11 }}>
-              {payload.kind === 'json' ? 'JSON' : 'TEXT'}
-              {payload.isTruncated ? ' · 先頭のみ' : ''}
-            </Text>
-          ) : null}
-        </View>
-        <View
-          style={{
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 14,
-            backgroundColor: colors.surface,
-            padding: 12,
-            borderCurve: 'continuous'
-          }}
-        >
-          <Text
-            selectable
-            style={{
-              color: payload.kind === 'empty' ? colors.subtle : colors.text,
-              fontSize: 12,
-              lineHeight: 18,
-              fontFamily: payload.kind === 'empty' ? undefined : 'monospace'
-            }}
-          >
-            {payload.content}
-          </Text>
-        </View>
-      </View>
+      <ResponseBodySection responseBody={log.responseBody} fallbackBody={log.responseBodySnippet} />
     </ScrollView>
   );
 };
