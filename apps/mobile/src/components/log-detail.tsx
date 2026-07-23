@@ -9,6 +9,7 @@ import {
   type HeaderEntry,
   type NetworkLog
 } from '@stackpilot/shared/domain/inspector';
+import { LogActionBar } from '@/components/log-action-bar';
 import { colors } from '@/theme/colors';
 
 interface HeaderSectionProps {
@@ -111,6 +112,8 @@ export const LogDetail = ({ log, embedded = false }: LogDetailProps) => {
           開始時刻 {formatStartedAtLabel(log.startedAt)}
         </Text>
       </View>
+
+      <LogActionBar log={log} />
 
       <HeaderSection title="Request headers" entries={requestHeaders} />
       <HeaderSection title="Response headers" entries={responseHeaders} />
