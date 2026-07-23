@@ -77,14 +77,43 @@ raw bodyはRequest headers確定後に安全化し、元データを破棄しま
 
 JSONとform-urlencodedでは、password、secret、token、API key、Cookie、session、CSRF等の項目を`<redacted>`へ置換します。JSONはネストしたオブジェクトや配列も再帰的に処理します。
 
+## Response bodyの安全な取得
+
+Desktop版では、各BrowserViewへ接続したChrome DevTools ProtocolのNetworkイベントから、以下のResponse bodyだけを取得します。
+
+- `application/json`
+- `application/*+json`
+- XHR / fetch通信
+- 最大64KiB
+- UTF-8として読み取れる内容
+
+以下は内容を取得せず、取得不可理由だけを表示します。
+
+- JSON以外のContent-Type
+- 64KiBを超えるbody
+- JSONとして解析できないbody
+- UTF-8として読み取れないbody
+- Chromiumがbodyを保持しておらず取得できない場合
+- Response body取得用Debuggerへ接続できない場合
+
+Response JSONでは、Request bodyと同じ機密キー判定を使用し、password、secret、token、API key、Cookie、session、CSRF等の項目を`<redacted>`へ置換します。ネストしたオブジェクトや配列も再帰的に処理します。
+
+raw Response bodyは解析とマスキングの間だけメモリ上で保持し、安全化後に破棄します。Mobile API、JSONコピー、共有サマリーへは安全化済みデータだけを渡します。
+
+### DevToolsとの併用
+
+ElectronのDebugger接続はDevTools起動時に解除されるため、DevToolsを開いている間に完了した通信はResponse bodyを取得できません。通信メタデータ、Request headers、Request body、Response headersは引き続き記録します。
+
+DevToolsを閉じるとResponse body取得処理へ自動再接続します。DevTools操作を妨げることはありません。
+
 ## 通信情報のコピー・共有
 
 通信詳細の`調査アクション`から以下を利用できます。
 
 - URLをクリップボードへコピー
-- 取得済みResponse bodyが正しいJSONの場合、整形済みJSONをコピー
+- 安全化済みResponse bodyが取得できた場合、整形済みJSONをコピー
 - Method、URL、Request headers、安全化済みRequest bodyからcURLを生成してコピー
-- Method、Status、Duration、URL、安全化済みcURLを標準共有シートで共有
+- Method、Status、Duration、URL、安全化済みcURLとbody取得状況を標準共有シートで共有
 
 cURL生成時は以下の機密ヘッダーを`<redacted>`へ置換します。
 
@@ -98,7 +127,9 @@ cURL生成時は以下の機密ヘッダーを`<redacted>`へ置換します。
 - `X-CSRF-Token`
 - `X-XSRF-Token`
 
-`Host`、`Content-Length`、`Connection`は再実行時の不整合を避けるためcURLから除外します。安全化に成功したRequest bodyだけを`--data-raw`へ追加し、16KiB超過・対象外形式・解析失敗時はbodyを追加しません。Response JSONには機密情報が含まれる可能性があるため、コピー後の共有先を確認してください。
+`Host`、`Content-Length`、`Connection`は再実行時の不整合を避けるためcURLから除外します。安全化に成功したRequest bodyだけを`--data-raw`へ追加し、16KiB超過・対象外形式・解析失敗時はbodyを追加しません。
+
+Response JSONコピーは安全化済みデータだけを対象にします。ただし、キー名から機密項目と判定できない値が含まれる可能性はあるため、コピー後の共有先を確認してください。
 
 ## セキュリティ
 
@@ -108,7 +139,9 @@ cURL生成時は以下の機密ヘッダーを`<redacted>`へ置換します。
 - QRコードとtokenは10分後、Desktopで停止した時、またはDesktopアプリ終了時に無効になります
 - 接続情報はiOS Keychain / Android Keystoreを利用するSecureStoreへ保存します
 - QR画像やペアリング文字列を第三者へ共有しないでください
-- Request bodyのraw値は永続化・ログ出力しません
+- Request / Response bodyのraw値は永続化・console出力しません
+- 解析やマスキングに失敗したbodyをraw文字列として表示しません
+- サイズ上限を超えたbodyは先頭部分も表示しません
 
 ## 表示モード
 
@@ -150,11 +183,13 @@ pnpm mobile:build
 ## 現時点の対象外
 
 - フルブラウザ機能
-- デスクトップ同等のDevTools
 - リクエスト再送
 - multipart / file / blob / binary Request body取得
 - 16KiBを超えるRequest bodyの内容表示
-- 機密ヘッダーやRequest body項目を伏字なしでコピーする機能
+- JSON以外のResponse body取得
+- 64KiBを超えるResponse bodyの内容表示
+- DevTools起動中のResponse body取得
+- 機密ヘッダーやbody項目を伏字なしでコピーする機能
 - HAR / JSONファイル出力
 - 正規表現検索
 - Header・Response Body全文検索
