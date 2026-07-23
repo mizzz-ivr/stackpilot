@@ -1,4 +1,5 @@
 import type { ApiLogEntry } from '../contracts';
+import type { SafeRequestBodyPreview } from './requestBody';
 
 export type ResourceType = 'xhr' | 'fetch' | 'other';
 export type InspectorStatusKind = 'unknown' | 'informational' | 'success' | 'redirect' | 'client-error' | 'server-error';
@@ -25,6 +26,7 @@ export interface NetworkLog {
   status?: number;
   durationMs?: number;
   requestHeaders: Record<string, string>;
+  requestBody?: SafeRequestBodyPreview;
   responseHeaders: Record<string, string>;
   responseBodySnippet?: string;
   startedAt: number;
@@ -63,6 +65,7 @@ export const toNetworkLog = (entry: ApiLogEntry): NetworkLog => ({
   status: entry.status,
   durationMs: entry.durationMs,
   requestHeaders: entry.requestHeaders,
+  requestBody: entry.requestBody,
   responseHeaders: entry.responseHeaders,
   responseBodySnippet: entry.responseBodySnippet,
   startedAt: entry.startedAt,
