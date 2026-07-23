@@ -33,6 +33,7 @@ export interface NetworkLog {
   responseBodySnippet?: string;
   startedAt: number;
   finishedAt?: number;
+  updatedAt?: number;
 }
 
 export interface InspectorFilter {
@@ -72,7 +73,8 @@ export const toNetworkLog = (entry: ApiLogEntry): NetworkLog => ({
   responseBody: entry.responseBody,
   responseBodySnippet: entry.responseBodySnippet,
   startedAt: entry.startedAt,
-  finishedAt: entry.finishedAt
+  finishedAt: entry.finishedAt,
+  updatedAt: entry.updatedAt
 });
 
 export const filterLogs = (logs: NetworkLog[], filter: InspectorFilter): NetworkLog[] => {
