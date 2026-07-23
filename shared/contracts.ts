@@ -40,6 +40,7 @@ export interface ApiLogEntry {
   responseBodySnippet?: string;
   startedAt: number;
   finishedAt?: number;
+  updatedAt?: number;
 }
 
 export interface AppSnapshot {
