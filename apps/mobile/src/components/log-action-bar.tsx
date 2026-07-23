@@ -72,7 +72,7 @@ export const LogActionBar = ({ log }: LogActionBarProps) => {
       <View style={{ gap: 3 }}>
         <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>調査アクション</Text>
         <Text selectable style={{ color: colors.subtle, fontSize: 11, lineHeight: 17 }}>
-          cURLは機密ヘッダーを伏字化し、安全に取得できたRequest bodyだけを含めます。
+          cURLは機密ヘッダーを伏字化し、安全に取得できたRequest bodyだけを含めます。JSONコピーは安全化済みResponse bodyだけを対象にします。
         </Text>
         {artifacts.redactedHeaderNames.length > 0 ? (
           <Text selectable style={{ color: colors.warning, fontSize: 10, lineHeight: 16 }}>
@@ -81,11 +81,19 @@ export const LogActionBar = ({ log }: LogActionBarProps) => {
         ) : null}
         {artifacts.redactedRequestBodyFieldPaths.length > 0 ? (
           <Text selectable style={{ color: colors.warning, fontSize: 10, lineHeight: 16 }}>
-            伏字body項目: {artifacts.redactedRequestBodyFieldPaths.join(', ')}
+            伏字Request body項目: {artifacts.redactedRequestBodyFieldPaths.join(', ')}
+          </Text>
+        ) : null}
+        {artifacts.redactedResponseBodyFieldPaths.length > 0 ? (
+          <Text selectable style={{ color: colors.warning, fontSize: 10, lineHeight: 16 }}>
+            マスキングResponse body項目: {artifacts.redactedResponseBodyFieldPaths.join(', ')}
           </Text>
         ) : null}
         <Text selectable style={{ color: colors.subtle, fontSize: 10, lineHeight: 16 }}>
           {artifacts.requestBodyNote}
+        </Text>
+        <Text selectable style={{ color: colors.subtle, fontSize: 10, lineHeight: 16 }}>
+          {artifacts.responseBodyNote}
         </Text>
       </View>
 
@@ -100,7 +108,7 @@ export const LogActionBar = ({ log }: LogActionBarProps) => {
           label="JSONをコピー"
           busy={busyAction === 'json'}
           disabled={Boolean(busyAction) || !artifacts.json}
-          accessibilityHint={artifacts.json ? '整形済みレスポンスJSONをコピーします' : 'JSONレスポンスがないため利用できません'}
+          accessibilityHint={artifacts.json ? '安全化済みレスポンスJSONをコピーします' : '安全化済みJSONレスポンスがないため利用できません'}
           onPress={() => artifacts.json && void copyText('json', 'JSON', artifacts.json)}
         />
         <ActionButton
@@ -121,7 +129,7 @@ export const LogActionBar = ({ log }: LogActionBarProps) => {
 
       {!artifacts.json ? (
         <Text selectable style={{ color: colors.subtle, fontSize: 10, lineHeight: 16 }}>
-          JSONコピーは、取得済みのResponse bodyが正しいJSONの場合のみ利用できます。
+          JSONコピーは、安全化済みResponse bodyが取得できた場合のみ利用できます。
         </Text>
       ) : null}
 
