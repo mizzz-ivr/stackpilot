@@ -35,7 +35,8 @@ const log: ApiLogEntry = {
   responseHeaders: { 'content-type': 'application/json' },
   responseBodySnippet: '{"ok":true}',
   startedAt: 1,
-  finishedAt: 43
+  finishedAt: 43,
+  updatedAt: 43
 };
 
 const snapshot: AppSnapshot = {
@@ -47,33 +48,39 @@ const snapshot: AppSnapshot = {
 
 const runningServers: MobileInspectorServer[] = [];
 
+const createRunningServer = async (listLogs: () => ApiLogEntry[]) => {
+  const server = new MobileInspectorServer({
+    getSnapshot: () => snapshot,
+    listLogs,
+    resolveLanAddress: () => '192.168.1.20',
+    tokenFactory: () => 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG',
+    ttlMs: 60_000
+  });
+  runningServers.push(server);
+
+  const status = await server.start();
+  const pairing = parseMobilePairingUri(status.pairingUri!);
+  return {
+    server,
+    pairing,
+    localBaseUrl: pairing.baseUrl.replace('192.168.1.20', '127.0.0.1'),
+    headers: { authorization: `Bearer ${pairing.token}` }
+  };
+};
+
 afterEach(async () => {
   await Promise.all(runningServers.splice(0).map((server) => server.stop()));
 });
 
 describe('MobileInspectorServer', () => {
   it('Bearer token必須でactive Workspaceのsnapshotを返す', async () => {
-    const server = new MobileInspectorServer({
-      getSnapshot: () => snapshot,
-      listLogs: () => [log],
-      resolveLanAddress: () => '192.168.1.20',
-      tokenFactory: () => 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG',
-      ttlMs: 60_000
-    });
-    runningServers.push(server);
-
-    const status = await server.start();
-    expect(status.state).toBe('running');
-    const pairing = parseMobilePairingUri(status.pairingUri!);
-    const localBaseUrl = pairing.baseUrl.replace('192.168.1.20', '127.0.0.1');
+    const { server, localBaseUrl, headers } = await createRunningServer(() => [log]);
 
     const unauthorized = await fetch(`${localBaseUrl}/v1/mobile/inspector/snapshot`);
     expect(unauthorized.status).toBe(401);
     expect(unauthorized.headers.get('cache-control')).toBe('no-store');
 
-    const response = await fetch(`${localBaseUrl}/v1/mobile/inspector/snapshot`, {
-      headers: { authorization: `Bearer ${pairing.token}` }
-    });
+    const response = await fetch(`${localBaseUrl}/v1/mobile/inspector/snapshot`, { headers });
     expect(response.status).toBe(200);
     const payload = await response.json() as { cursor: string; workspace: { id: string }; logs: ApiLogEntry[] };
     expect(payload).toMatchObject({
@@ -87,19 +94,7 @@ describe('MobileInspectorServer', () => {
   });
 
   it('同じカーソルなら本文なしの304を返す', async () => {
-    const server = new MobileInspectorServer({
-      getSnapshot: () => snapshot,
-      listLogs: () => [log],
-      resolveLanAddress: () => '192.168.1.20',
-      tokenFactory: () => 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG',
-      ttlMs: 60_000
-    });
-    runningServers.push(server);
-
-    const status = await server.start();
-    const pairing = parseMobilePairingUri(status.pairingUri!);
-    const localBaseUrl = pairing.baseUrl.replace('192.168.1.20', '127.0.0.1');
-    const headers = { authorization: `Bearer ${pairing.token}` };
+    const { localBaseUrl, headers } = await createRunningServer(() => [log]);
 
     const initial = await fetch(`${localBaseUrl}/v1/mobile/inspector/snapshot`, { headers });
     const payload = await initial.json() as { cursor: string };
@@ -116,23 +111,11 @@ describe('MobileInspectorServer', () => {
 
   it('ログが増えた場合は新しいカーソルで200を返す', async () => {
     let logs: ApiLogEntry[] = [log];
-    const server = new MobileInspectorServer({
-      getSnapshot: () => snapshot,
-      listLogs: () => logs,
-      resolveLanAddress: () => '192.168.1.20',
-      tokenFactory: () => 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG',
-      ttlMs: 60_000
-    });
-    runningServers.push(server);
-
-    const status = await server.start();
-    const pairing = parseMobilePairingUri(status.pairingUri!);
-    const localBaseUrl = pairing.baseUrl.replace('192.168.1.20', '127.0.0.1');
-    const headers = { authorization: `Bearer ${pairing.token}` };
+    const { localBaseUrl, headers } = await createRunningServer(() => logs);
     const initial = await fetch(`${localBaseUrl}/v1/mobile/inspector/snapshot`, { headers });
     const firstPayload = await initial.json() as { cursor: string };
 
-    logs = [{ ...log, id: 'log-2', startedAt: 100, finishedAt: 142 }, log];
+    logs = [{ ...log, id: 'log-2', startedAt: 100, finishedAt: 142, updatedAt: 142 }, log];
     const updated = await fetch(
       `${localBaseUrl}/v1/mobile/inspector/snapshot?cursor=${encodeURIComponent(firstPayload.cursor)}`,
       { headers }
@@ -142,6 +125,41 @@ describe('MobileInspectorServer', () => {
     expect(updated.status).toBe(200);
     expect(secondPayload.cursor).not.toBe(firstPayload.cursor);
     expect(secondPayload.logs[0]?.id).toBe('log-2');
+  });
+
+  it('同じログへResponse bodyを反映すると更新時刻でカーソルが変わる', async () => {
+    let logs: ApiLogEntry[] = [log];
+    const { localBaseUrl, headers } = await createRunningServer(() => logs);
+    const initial = await fetch(`${localBaseUrl}/v1/mobile/inspector/snapshot`, { headers });
+    const firstPayload = await initial.json() as { cursor: string };
+
+    logs = [
+      {
+        ...log,
+        responseBodySnippet: undefined,
+        responseBody: {
+          kind: 'json',
+          contentType: 'application/json',
+          content: '{"ok":true,"access_token":"<redacted>"}',
+          byteLength: 48,
+          isTruncated: false,
+          redactedFieldPaths: ['access_token']
+        },
+        updatedAt: 100
+      }
+    ];
+    const updated = await fetch(
+      `${localBaseUrl}/v1/mobile/inspector/snapshot?cursor=${encodeURIComponent(firstPayload.cursor)}`,
+      { headers }
+    );
+    const secondPayload = await updated.json() as { cursor: string; logs: ApiLogEntry[] };
+
+    expect(updated.status).toBe(200);
+    expect(secondPayload.cursor).not.toBe(firstPayload.cursor);
+    expect(secondPayload.logs[0]?.responseBody).toMatchObject({
+      kind: 'json',
+      redactedFieldPaths: ['access_token']
+    });
   });
 
   it('期限切れtokenを拒否する', async () => {
