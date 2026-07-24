@@ -84,6 +84,8 @@ describe('APIログの安全化済みエクスポート', () => {
       Authorization: 'Bearer secret',
       Cookie: 'session=secret',
       'Set-Cookie': 'session=server-secret',
+      'X-Session-ID': 'custom-session-secret',
+      'X-Private-Key': 'custom-private-key',
       Location: 'https://example.com/callback?token=redirect-secret',
       Refresh: '0;url=https://example.com?token=secret',
       Accept: 'application/json'
@@ -92,11 +94,15 @@ describe('APIログの安全化済みエクスポート', () => {
     expect(headers.Authorization).toBe('<redacted>');
     expect(headers.Cookie).toBe('<redacted>');
     expect(headers['Set-Cookie']).toBe('<redacted>');
+    expect(headers['X-Session-ID']).toBe('<redacted>');
+    expect(headers['X-Private-Key']).toBe('<redacted>');
     expect(headers.Location).toContain('token=%3Credacted%3E');
     expect(headers.Refresh).toBe('<redacted>');
     expect(headers.Accept).toBe('application/json');
     expect(JSON.stringify(headers)).not.toContain('redirect-secret');
     expect(JSON.stringify(headers)).not.toContain('server-secret');
+    expect(JSON.stringify(headers)).not.toContain('custom-session-secret');
+    expect(JSON.stringify(headers)).not.toContain('custom-private-key');
   });
 
   it('Stackpilot Safe JSONへ安全化済みデータだけを出力する', () => {
