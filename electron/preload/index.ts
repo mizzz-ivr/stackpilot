@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { ApiLogEntry, AppSnapshot, CreateWorkspaceInput, Workspace } from '../../shared/contracts';
-import type { ApiLogExportRequest, ApiLogExportResult } from '../../shared/domain/apiLogExport';
+import type { ApiLogExportRequest } from '../../shared/domain/apiLogExport';
+import type {
+  ApiLogExportDiscardRequest,
+  ApiLogExportPreviewResult,
+  ApiLogExportSaveRequest,
+  ApiLogExportSaveResult
+} from '../../shared/domain/apiLogExportPreview';
 import { CHANNELS } from '../main/ipc/channels';
 import type { RiskConfirmationRequest } from '../../shared/domain/risk';
 import type { MobilePairingServerStatus } from '../../shared/domain/mobilePairing';
@@ -24,8 +30,12 @@ const api = {
   },
   apiLog: {
     list: (workspaceId: string): Promise<ApiLogEntry[]> => ipcRenderer.invoke(CHANNELS.apiLogList, workspaceId),
-    export: (request: ApiLogExportRequest): Promise<ApiLogExportResult> =>
-      ipcRenderer.invoke(CHANNELS.apiLogExport, request),
+    previewExport: (request: ApiLogExportRequest): Promise<ApiLogExportPreviewResult> =>
+      ipcRenderer.invoke(CHANNELS.apiLogExportPreview, request),
+    saveExport: (request: ApiLogExportSaveRequest): Promise<ApiLogExportSaveResult> =>
+      ipcRenderer.invoke(CHANNELS.apiLogExportSave, request),
+    discardExportPreview: (request: ApiLogExportDiscardRequest): Promise<boolean> =>
+      ipcRenderer.invoke(CHANNELS.apiLogExportDiscard, request),
     subscribe: (handler: (entry: ApiLogEntry) => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent, entry: ApiLogEntry) => handler(entry);
       ipcRenderer.on(CHANNELS.apiLogReceived, listener);
