@@ -8,6 +8,7 @@ export const CHANNELS = {
   browserNavigate: 'browser:navigate',
   browserOpenDevTools: 'browser:open-devtools',
   apiLogList: 'api-log:list',
+  apiLogExport: 'api-log:export',
   apiLogReceived: 'api-log:received',
   riskConfirmationRequested: 'risk:confirmation-requested',
   riskConfirmationRespond: 'risk:confirmation-respond',

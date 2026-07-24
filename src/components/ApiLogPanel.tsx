@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import type { ApiLogExportFormat } from '../../shared/domain/apiLogExport';
 import {
   createPayloadPreview,
   formatDurationLabel,
@@ -23,6 +24,11 @@ import {
 import { selectFilteredLogs, selectSelectedLog, useAppStore } from '../store/appStore';
 
 const filterButtons: InspectorFilter['kind'][] = ['all', 'xhr', 'fetch'];
+
+type ExportFeedback = {
+  kind: 'success' | 'info' | 'error';
+  message: string;
+};
 
 const HeaderList = ({ entries, emptyLabel }: { entries: HeaderEntry[]; emptyLabel: string }) => {
   if (entries.length === 0) {
@@ -181,6 +187,8 @@ export const ApiLogPanel = () => {
   const selectInspectorLog = useAppStore((state) => state.selectInspectorLog);
   const filtered = useAppStore(selectFilteredLogs);
   const selectedLog = useAppStore(selectSelectedLog);
+  const [exportingFormat, setExportingFormat] = useState<ApiLogExportFormat>();
+  const [exportFeedback, setExportFeedback] = useState<ExportFeedback>();
 
   const emptyLabel = useMemo(() => {
     if (!activeWorkspaceId) return 'ワークスペースを選択してください';
@@ -190,6 +198,41 @@ export const ApiLogPanel = () => {
     return undefined;
   }, [activeWorkspaceId, filter.kind, filtered.length, isLoading, logs.length]);
 
+  const exportLogs = async (format: ApiLogExportFormat): Promise<void> => {
+    if (!activeWorkspaceId || exportingFormat) return;
+
+    setExportingFormat(format);
+    setExportFeedback(undefined);
+    try {
+      const result = await window.stackpilot.apiLog.export({
+        workspaceId: activeWorkspaceId,
+        format,
+        filterKind: filter.kind
+      });
+
+      if (result.status === 'cancelled') {
+        setExportFeedback({ kind: 'info', message: '保存をキャンセルしました。' });
+        return;
+      }
+      if (result.status === 'failed') {
+        setExportFeedback({ kind: 'error', message: result.errorMessage });
+        return;
+      }
+
+      const omittedLabel = result.omittedCount > 0 ? ` ${result.omittedCount}件は上限により省略しました。` : '';
+      setExportFeedback({
+        kind: 'success',
+        message: `${result.exportedCount}件を保存しました。${omittedLabel} 保存先: ${result.filePath}`
+      });
+    } catch {
+      setExportFeedback({ kind: 'error', message: 'APIログの保存処理を開始できませんでした。' });
+    } finally {
+      setExportingFormat(undefined);
+    }
+  };
+
+  const exportDisabled = !activeWorkspaceId || filtered.length === 0 || Boolean(exportingFormat);
+
   return (
     <aside className="flex h-full w-[420px] min-w-[340px] max-w-[42vw] flex-col border-l border-slate-800 bg-slate-950/80">
       <div className="border-b border-slate-800 px-3 py-2">
@@ -197,19 +240,55 @@ export const ApiLogPanel = () => {
         <p className="text-xs text-slate-400">通信を選択してヘッダーと安全化済み本文を確認</p>
       </div>
 
-      <div className="flex items-center gap-2 border-b border-slate-800 px-3 py-2">
-        {filterButtons.map((kind) => (
-          <button
-            key={kind}
-            type="button"
-            className={`rounded px-2 py-1 text-xs ${
-              filter.kind === kind ? 'bg-indigo-500/30 text-indigo-200' : 'bg-slate-800 text-slate-300'
+      <div className="space-y-2 border-b border-slate-800 px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            {filterButtons.map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                className={`rounded px-2 py-1 text-xs ${
+                  filter.kind === kind ? 'bg-indigo-500/30 text-indigo-200' : 'bg-slate-800 text-slate-300'
+                }`}
+                onClick={() => setInspectorFilter(kind)}
+              >
+                {kind}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {(['json', 'har'] as const).map((format) => (
+              <button
+                key={format}
+                type="button"
+                disabled={exportDisabled}
+                aria-busy={exportingFormat === format}
+                className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] font-medium uppercase text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() => void exportLogs(format)}
+              >
+                {exportingFormat === format ? '保存中…' : `${format}保存`}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="text-[10px] leading-4 text-slate-500">
+          現在の{filter.kind}ログを最大500件保存します。URL・機密ヘッダー・bodyは再度安全化されます。
+        </p>
+        {exportFeedback ? (
+          <p
+            role="status"
+            className={`break-all text-[10px] leading-4 ${
+              exportFeedback.kind === 'success'
+                ? 'text-emerald-300'
+                : exportFeedback.kind === 'error'
+                  ? 'text-rose-300'
+                  : 'text-slate-400'
             }`}
-            onClick={() => setInspectorFilter(kind)}
           >
-            {kind}
-          </button>
-        ))}
+            {exportFeedback.message}
+          </p>
+        ) : null}
       </div>
 
       {errorMessage ? (

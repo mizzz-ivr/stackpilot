@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import type { ApiLogEntry, AppSnapshot, CreateWorkspaceInput, Workspace } from '../shared/contracts';
+import type { ApiLogExportRequest, ApiLogExportResult } from '../shared/domain/apiLogExport';
 import type { RiskConfirmationRequest } from '../shared/domain/risk';
 import type { MobilePairingServerStatus } from '../shared/domain/mobilePairing';
 
@@ -20,6 +21,7 @@ declare global {
       };
       apiLog: {
         list: (workspaceId: string) => Promise<ApiLogEntry[]>;
+        export: (request: ApiLogExportRequest) => Promise<ApiLogExportResult>;
         subscribe: (handler: (entry: ApiLogEntry) => void) => () => void;
       };
       mobilePairing: {

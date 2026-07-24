@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { ApiLogEntry, AppSnapshot, CreateWorkspaceInput, Workspace } from '../../shared/contracts';
+import type { ApiLogExportRequest, ApiLogExportResult } from '../../shared/domain/apiLogExport';
 import { CHANNELS } from '../main/ipc/channels';
 import type { RiskConfirmationRequest } from '../../shared/domain/risk';
 import type { MobilePairingServerStatus } from '../../shared/domain/mobilePairing';
@@ -23,6 +24,8 @@ const api = {
   },
   apiLog: {
     list: (workspaceId: string): Promise<ApiLogEntry[]> => ipcRenderer.invoke(CHANNELS.apiLogList, workspaceId),
+    export: (request: ApiLogExportRequest): Promise<ApiLogExportResult> =>
+      ipcRenderer.invoke(CHANNELS.apiLogExport, request),
     subscribe: (handler: (entry: ApiLogEntry) => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent, entry: ApiLogEntry) => handler(entry);
       ipcRenderer.on(CHANNELS.apiLogReceived, listener);
