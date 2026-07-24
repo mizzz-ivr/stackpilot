@@ -27,6 +27,29 @@ Expo Goで表示されたQRコードを読み込んで確認します。`EXPO_PU
 
 詳細は `apps/mobile/README.md` を参照してください。
 
+## 安全化済みAPIログエクスポート
+
+DesktopのAPI Inspectorでは、現在のWorkspaceと`all` / `xhr` / `fetch`フィルターに一致するログを以下の形式で保存できます。
+
+- Stackpilot Safe JSON v1
+- HAR 1.2互換
+
+エクスポートは最大500件です。500件を超える場合は新しいログから500件を保存し、省略件数を画面と成果物へ記録します。
+
+保存前にmain processで再サニタイズし、以下を適用します。
+
+- URLのuserinfo（`user:password@host`）を除去
+- URL fragmentを`#redacted`へ置換
+- password、token、secret、API key、session、authorization、signature等の機密クエリ値を`<redacted>`へ置換
+- Authorization、Cookie、Set-Cookie、API key、CSRF token等のヘッダー値を`<redacted>`へ置換
+- HARのcookies配列は空にし、Cookieを展開しない
+- Request / Response bodyは既存の安全化済みpreviewだけを使用
+- 取得不可bodyや通信エラー文字列を推測・復元して出力しない
+
+rendererからmain processへ渡すのはWorkspace ID、形式、フィルターだけです。ログ本文や保存先パスをrendererから指定することはできません。保存先はElectronの保存ダイアログでユーザーが選択します。
+
+機密判定はキー名・ヘッダー名に基づくため、意味のないキー名、URL pathへ直接埋め込まれたtoken、独自命名の機密ヘッダー等を完全には判定できません。外部共有前に成果物を確認してください。Mobileからのファイル保存・HARインポート・rawログ出力は対象外です。
+
 ## スクリプト
 
 - `pnpm dev`: renderer + Electron起動
