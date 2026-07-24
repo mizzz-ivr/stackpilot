@@ -37,6 +37,7 @@ type PreparedExport = {
 
 export class ApiLogExportService {
   private preparedExport?: PreparedExport;
+  private previewExpiryTimer?: NodeJS.Timeout;
 
   constructor(
     private readonly mainWindow: BrowserWindow,
@@ -77,6 +78,7 @@ export class ApiLogExportService {
         customEnvironmentLabel: workspace.customEnvironmentLabel
       };
 
+      this.clearPreparedExport();
       this.preparedExport = {
         previewId,
         request: { ...request },
@@ -88,6 +90,10 @@ export class ApiLogExportService {
         maskingReport: prepared.maskingReport,
         sampleEntries: prepared.sampleEntries
       };
+      this.previewExpiryTimer = setTimeout(() => {
+        this.clearPreparedExport(previewId);
+      }, apiLogExportPreviewTtlMs);
+      this.previewExpiryTimer.unref?.();
 
       return {
         status: 'ready',
@@ -109,7 +115,7 @@ export class ApiLogExportService {
         }
       };
     } catch {
-      this.preparedExport = undefined;
+      this.clearPreparedExport();
       return previewFailedResult('generation-failed', '安全化済みプレビューを生成できませんでした。');
     }
   }
@@ -124,7 +130,7 @@ export class ApiLogExportService {
       return saveFailedResult('preview-not-found', '保存対象のプレビューが見つかりません。再度プレビューを生成してください。');
     }
     if (prepared.expiresAt <= this.now()) {
-      this.preparedExport = undefined;
+      this.clearPreparedExport(prepared.previewId);
       return saveFailedResult('preview-expired', 'プレビューの有効期限が切れました。再度プレビューを生成してください。');
     }
     if (this.mainWindow.isDestroyed()) {
@@ -153,10 +159,16 @@ export class ApiLogExportService {
         };
       }
 
-      await writeFile(saveResult.filePath, prepared.artifact.content, { encoding: 'utf8' });
-      if (this.preparedExport?.previewId === prepared.previewId) {
-        this.preparedExport = undefined;
+      if (prepared.expiresAt <= this.now()) {
+        this.clearPreparedExport(prepared.previewId);
+        return saveFailedResult('preview-expired', 'プレビューの有効期限が切れました。再度プレビューを生成してください。');
       }
+      if (this.preparedExport?.previewId !== prepared.previewId) {
+        return saveFailedResult('preview-not-found', '保存対象のプレビューが破棄されました。再度プレビューを生成してください。');
+      }
+
+      await writeFile(saveResult.filePath, prepared.artifact.content, { encoding: 'utf8' });
+      this.clearPreparedExport(prepared.previewId);
       return {
         status: 'saved',
         filePath: saveResult.filePath,
@@ -175,8 +187,17 @@ export class ApiLogExportService {
   discard(request: unknown): boolean {
     if (!isApiLogExportDiscardRequest(request)) return false;
     if (this.preparedExport?.previewId !== request.previewId) return false;
-    this.preparedExport = undefined;
+    this.clearPreparedExport(request.previewId);
     return true;
+  }
+
+  private clearPreparedExport(previewId?: string): void {
+    if (previewId && this.preparedExport?.previewId !== previewId) return;
+    if (this.previewExpiryTimer) {
+      clearTimeout(this.previewExpiryTimer);
+      this.previewExpiryTimer = undefined;
+    }
+    this.preparedExport = undefined;
   }
 }
 
