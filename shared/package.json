@@ -7,6 +7,7 @@
     ".": "./index.ts",
     "./contracts": "./contracts.ts",
     "./domain/api-log-export": "./domain/apiLogExport.ts",
+    "./domain/api-log-export-preview": "./domain/apiLogExportPreview.ts",
     "./domain/environment": "./domain/environment.ts",
     "./domain/inspector": "./domain/inspector.ts",
     "./domain/mobile-inspector": "./domain/mobileInspector.ts",

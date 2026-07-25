@@ -76,7 +76,9 @@ export const registerHandlers = (
   });
 
   ipcMain.handle(CHANNELS.apiLogList, (_event, workspaceId: string) => apiLogService.list(workspaceId));
-  ipcMain.handle(CHANNELS.apiLogExport, (_event, request: unknown) => apiLogExportService.export(request));
+  ipcMain.handle(CHANNELS.apiLogExportPreview, (_event, request: unknown) => apiLogExportService.preview(request));
+  ipcMain.handle(CHANNELS.apiLogExportSave, (_event, request: unknown) => apiLogExportService.save(request));
+  ipcMain.handle(CHANNELS.apiLogExportDiscard, (_event, request: unknown) => apiLogExportService.discard(request));
 
   ipcMain.handle(CHANNELS.mobilePairingGetStatus, () => mobileInspectorServer.getStatus());
   ipcMain.handle(CHANNELS.mobilePairingStart, () => mobileInspectorServer.start());
