@@ -1,19 +1,17 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import { BrowserWindow, dialog } from 'electron';
-import {
-  isApiLogExportRequest,
-  type ApiLogExportRequest,
-  type SafeApiLogExportArtifact
-} from '../../../shared/domain/apiLogExport';
+import type { SafeApiLogExportArtifact } from '../../../shared/domain/apiLogExport';
 import {
   apiLogExportPreviewContentMaxChars,
   apiLogExportPreviewTtlMs,
   createPreparedApiLogExportPreview,
   isApiLogExportDiscardRequest,
+  isApiLogExportPreviewRequest,
   isApiLogExportSaveRequest,
   type ApiLogExportMaskingReport,
   type ApiLogExportPreviewEntry,
+  type ApiLogExportPreviewRequest,
   type ApiLogExportPreviewResult,
   type ApiLogExportSaveResult
 } from '../../../shared/domain/apiLogExportPreview';
@@ -25,7 +23,7 @@ type ExportWorkspace = Pick<Workspace, 'id' | 'name' | 'environmentType' | 'cust
 
 type PreparedExport = {
   previewId: string;
-  request: ApiLogExportRequest;
+  request: ApiLogExportPreviewRequest;
   workspace: ExportWorkspace;
   artifact: SafeApiLogExportArtifact;
   artifactSha256: string;
@@ -48,8 +46,8 @@ export class ApiLogExportService {
   ) {}
 
   preview(request: unknown): ApiLogExportPreviewResult {
-    if (!isApiLogExportRequest(request)) {
-      return previewFailedResult('invalid-request', 'エクスポート条件が不正です。');
+    if (!isApiLogExportPreviewRequest(request)) {
+      return previewFailedResult('invalid-request', 'エクスポート条件または追加マスキングルールが不正です。');
     }
 
     const workspace = this.workspaceService
@@ -66,6 +64,7 @@ export class ApiLogExportService {
         logs: this.apiLogService.list(workspace.id),
         format: request.format,
         filterKind: request.filterKind,
+        customMaskingRules: request.customMaskingRules,
         exportedAt
       });
       const previewId = this.previewIdFactory();
@@ -77,11 +76,17 @@ export class ApiLogExportService {
         environmentType: workspace.environmentType,
         customEnvironmentLabel: workspace.customEnvironmentLabel
       };
+      const normalizedRequest: ApiLogExportPreviewRequest = {
+        workspaceId: request.workspaceId,
+        format: request.format,
+        filterKind: request.filterKind,
+        customMaskingRules: prepared.customMaskingRules
+      };
 
       this.clearPreparedExport();
       this.preparedExport = {
         previewId,
-        request: { ...request },
+        request: normalizedRequest,
         workspace: exportWorkspace,
         artifact: prepared.artifact,
         artifactSha256,
@@ -110,13 +115,14 @@ export class ApiLogExportService {
           artifactSha256,
           contentPreview: prepared.artifact.content.slice(0, apiLogExportPreviewContentMaxChars),
           isContentPreviewTruncated: prepared.artifact.content.length > apiLogExportPreviewContentMaxChars,
+          customMaskingRules: prepared.customMaskingRules,
           maskingReport: prepared.maskingReport,
           sampleEntries: prepared.sampleEntries
         }
       };
     } catch {
       this.clearPreparedExport();
-      return previewFailedResult('generation-failed', '安全化済みプレビューを生成できませんでした。');
+      return previewFailedResult('generation-failed', '追加マスキングを適用した安全化済みプレビューを生成できませんでした。');
     }
   }
 
@@ -203,11 +209,11 @@ export class ApiLogExportService {
 
 const createDefaultFileName = (
   workspaceName: string,
-  request: ApiLogExportRequest,
+  request: Pick<ApiLogExportPreviewRequest, 'format' | 'filterKind'>,
   exportedAt: number
 ): string => {
   const safeWorkspaceName = workspaceName
-    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-')
+    .replace(/[\/:*?"<>|\u0000-\u001f]/g, '-')
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
