@@ -22,8 +22,11 @@ export type ApiLogExportCustomRuleParseResult =
   | { status: 'valid'; rules: ApiLogExportCustomMaskingRules }
   | { status: 'invalid'; errorMessage: string };
 
-const urlHeaderNames = new Set(['location', 'content-location', 'referer', 'referrer']);
+type MaskingSide = 'request' | 'response';
+type MaskingSummary = { redactedCount: number; redactedPaths: string[] };
+
 const redactedValue = '<redacted>';
+const urlHeaderNames = new Set(['location', 'content-location', 'referer', 'referrer']);
 
 export const emptyApiLogExportCustomMaskingRules = (): ApiLogExportCustomMaskingRules => ({
   queryNames: [],
@@ -44,11 +47,14 @@ export const normalizeApiLogExportCustomRuleName = (value: string): string =>
 
 export const isApiLogExportCustomMaskingRules = (value: unknown): value is ApiLogExportCustomMaskingRules => {
   if (!isRecord(value)) return false;
-  return (
-    isRuleList(value.queryNames) &&
-    isRuleList(value.headerNames) &&
-    isRuleList(value.bodyFieldNames)
-  );
+  if (!isRuleList(value.queryNames) || !isRuleList(value.headerNames) || !isRuleList(value.bodyFieldNames)) {
+    return false;
+  }
+  return !findInvalidCategory({
+    queryNames: value.queryNames,
+    headerNames: value.headerNames,
+    bodyFieldNames: value.bodyFieldNames
+  });
 };
 
 export const normalizeApiLogExportCustomMaskingRules = (
@@ -74,10 +80,10 @@ export const parseApiLogExportCustomMaskingRuleText = (input: {
     headerNames: splitRuleText(input.headerNamesText),
     bodyFieldNames: splitRuleText(input.bodyFieldNamesText)
   };
-
-  const invalidCategory = findInvalidCategory(rules);
-  if (invalidCategory) return { status: 'invalid', errorMessage: invalidCategory };
-  return { status: 'valid', rules: normalizeApiLogExportCustomMaskingRules(rules) };
+  const errorMessage = findInvalidCategory(rules);
+  return errorMessage
+    ? { status: 'invalid', errorMessage }
+    : { status: 'valid', rules: normalizeApiLogExportCustomMaskingRules(rules) };
 };
 
 export const matchesApiLogExportCustomRule = (name: string, rules: string[]): boolean => {
@@ -100,17 +106,11 @@ export const applyApiLogExportCustomMasking = (
   const payload: unknown = JSON.parse(artifact.content);
   if (!isRecord(payload)) throw new Error('エクスポート成果物の形式が不正です。');
 
-  if (artifact.extension === 'json') {
-    applyToSafeJsonPayload(payload, rules, report);
-  } else {
-    applyToHarPayload(payload, rules, report);
-  }
+  if (artifact.extension === 'json') applyToSafeJsonPayload(payload, rules, report);
+  else applyToHarPayload(payload, rules, report);
 
   return {
-    artifact: {
-      ...artifact,
-      content: `${JSON.stringify(payload, null, 2)}\n`
-    },
+    artifact: { ...artifact, content: `${JSON.stringify(payload, null, 2)}\n` },
     report,
     rules
   };
@@ -124,7 +124,7 @@ const applyToSafeJsonPayload = (
   const logs = Array.isArray(payload.logs) ? payload.logs : [];
   logs.forEach((value) => {
     if (!isRecord(value)) return;
-    maskUrlProperty(value, 'url', rules.queryNames, report, true);
+    maskUrlProperty(value, 'url', rules.queryNames, report);
     maskHeaderRecord(value.requestHeaders, rules, report, 'request');
     maskHeaderRecord(value.responseHeaders, rules, report, 'response');
     maskBodyRecord(value.requestBody, rules.bodyFieldNames, report, 'request');
@@ -151,7 +151,7 @@ const applyToHarPayload = (
     const response = isRecord(value.response) ? value.response : undefined;
 
     if (request) {
-      maskUrlProperty(request, 'url', rules.queryNames, report, true);
+      maskUrlProperty(request, 'url', rules.queryNames, report);
       maskHarQueryString(request.queryString, rules.queryNames);
       maskHeaderArray(request.headers, rules, report, 'request');
       if (isRecord(request.postData)) {
@@ -168,7 +168,7 @@ const applyToHarPayload = (
 
     if (response) {
       maskHeaderArray(response.headers, rules, report, 'response');
-      maskUrlProperty(response, 'redirectURL', rules.queryNames, report, true);
+      maskUrlProperty(response, 'redirectURL', rules.queryNames, report);
       if (isRecord(response.content)) {
         maskTextBody(
           response.content,
@@ -194,29 +194,25 @@ const maskUrlProperty = (
   record: Record<string, unknown>,
   property: string,
   queryRules: string[],
-  report: ApiLogExportCustomMaskingReport,
-  countChanges: boolean
+  report: ApiLogExportCustomMaskingReport
 ): void => {
   const value = record[property];
   if (typeof value !== 'string' || queryRules.length === 0) return;
   const result = maskUrlQueryValues(value, queryRules);
   record[property] = result.value;
-  if (countChanges) report.queryValuesRedacted += result.redactedCount;
+  report.queryValuesRedacted += result.redactedCount;
 };
 
 const maskUrlQueryValues = (value: string, queryRules: string[]): { value: string; redactedCount: number } => {
   try {
     const url = new URL(value);
-    let redactedCount = 0;
     const entries = [...url.searchParams.entries()];
+    let redactedCount = 0;
     url.search = '';
     entries.forEach(([name, itemValue]) => {
-      if (matchesApiLogExportCustomRule(name, queryRules) && itemValue !== redactedValue) {
-        url.searchParams.append(name, redactedValue);
-        redactedCount += 1;
-      } else {
-        url.searchParams.append(name, itemValue);
-      }
+      const shouldMask = matchesApiLogExportCustomRule(name, queryRules) && itemValue !== redactedValue;
+      url.searchParams.append(name, shouldMask ? redactedValue : itemValue);
+      if (shouldMask) redactedCount += 1;
     });
     return { value: url.toString(), redactedCount };
   } catch {
@@ -236,7 +232,7 @@ const maskHeaderRecord = (
   value: unknown,
   rules: ApiLogExportCustomMaskingRules,
   report: ApiLogExportCustomMaskingReport,
-  side: 'request' | 'response'
+  side: MaskingSide
 ): void => {
   if (!isRecord(value)) return;
   Object.entries(value).forEach(([name, headerValue]) => {
@@ -244,9 +240,7 @@ const maskHeaderRecord = (
     if (matchesApiLogExportCustomRule(name, rules.headerNames) && headerValue !== redactedValue) {
       value[name] = redactedValue;
       incrementHeaderReport(report, side);
-      return;
-    }
-    if (urlHeaderNames.has(name.trim().toLowerCase())) {
+    } else if (urlHeaderNames.has(name.trim().toLowerCase())) {
       const masked = maskUrlQueryValues(headerValue, rules.queryNames);
       value[name] = masked.value;
       report.queryValuesRedacted += masked.redactedCount;
@@ -258,7 +252,7 @@ const maskHeaderArray = (
   value: unknown,
   rules: ApiLogExportCustomMaskingRules,
   report: ApiLogExportCustomMaskingReport,
-  side: 'request' | 'response'
+  side: MaskingSide
 ): void => {
   if (!Array.isArray(value)) return;
   value.forEach((entry) => {
@@ -266,9 +260,7 @@ const maskHeaderArray = (
     if (matchesApiLogExportCustomRule(entry.name, rules.headerNames) && entry.value !== redactedValue) {
       entry.value = redactedValue;
       incrementHeaderReport(report, side);
-      return;
-    }
-    if (urlHeaderNames.has(entry.name.trim().toLowerCase())) {
+    } else if (urlHeaderNames.has(entry.name.trim().toLowerCase())) {
       const masked = maskUrlQueryValues(entry.value, rules.queryNames);
       entry.value = masked.value;
       report.queryValuesRedacted += masked.redactedCount;
@@ -280,12 +272,13 @@ const maskBodyRecord = (
   value: unknown,
   bodyRules: string[],
   report: ApiLogExportCustomMaskingReport,
-  side: 'request' | 'response'
+  side: MaskingSide
 ): void => {
   if (!isRecord(value) || typeof value.content !== 'string') return;
   const contentType = typeof value.contentType === 'string' ? value.contentType : undefined;
   const result = maskBodyContent(value.content, contentType, bodyRules);
   if (!result) return;
+
   value.content = result.content;
   const existingPaths = Array.isArray(value.redactedFieldPaths)
     ? value.redactedFieldPaths.filter((item): item is string => typeof item === 'string')
@@ -300,7 +293,7 @@ const maskTextBody = (
   contentType: string | undefined,
   bodyRules: string[],
   report: ApiLogExportCustomMaskingReport,
-  side: 'request' | 'response'
+  side: MaskingSide
 ): void => {
   const value = record[property];
   if (typeof value !== 'string') return;
@@ -317,32 +310,29 @@ const maskBodyContent = (
 ): { content: string; redactedCount: number; redactedPaths: string[] } | undefined => {
   if (bodyRules.length === 0) return undefined;
   const normalizedContentType = normalizeRequestBodyContentType(contentType);
+
   if (normalizedContentType === 'application/x-www-form-urlencoded') {
     const next = new URLSearchParams();
-    let redactedCount = 0;
-    const redactedPaths: string[] = [];
+    const summary: MaskingSummary = { redactedCount: 0, redactedPaths: [] };
     for (const [name, value] of new URLSearchParams(content).entries()) {
-      if (matchesApiLogExportCustomRule(name, bodyRules) && value !== redactedValue) {
-        next.append(name, redactedValue);
-        redactedCount += 1;
-        redactedPaths.push(name);
-      } else {
-        next.append(name, value);
+      const shouldMask = matchesApiLogExportCustomRule(name, bodyRules) && value !== redactedValue;
+      next.append(name, shouldMask ? redactedValue : value);
+      if (shouldMask) {
+        summary.redactedCount += 1;
+        summary.redactedPaths.push(name);
       }
     }
-    return { content: next.toString(), redactedCount, redactedPaths };
+    return { content: next.toString(), ...summary };
   }
 
   const isJson = normalizedContentType === 'application/json' || Boolean(normalizedContentType?.endsWith('+json'));
   if (!isJson) return undefined;
 
   const parsed: unknown = JSON.parse(content);
-  const summary = { redactedCount: 0, redactedPaths: [] as string[] };
-  const masked = maskJsonValue(parsed, bodyRules, '', summary);
+  const summary: MaskingSummary = { redactedCount: 0, redactedPaths: [] };
   return {
-    content: JSON.stringify(masked),
-    redactedCount: summary.redactedCount,
-    redactedPaths: summary.redactedPaths
+    content: JSON.stringify(maskJsonValue(parsed, bodyRules, '', summary)),
+    ...summary
   };
 };
 
@@ -350,7 +340,7 @@ const maskJsonValue = (
   value: unknown,
   bodyRules: string[],
   path: string,
-  summary: { redactedCount: number; redactedPaths: string[] }
+  summary: MaskingSummary
 ): unknown => {
   if (Array.isArray(value)) {
     return value.map((item, index) => maskJsonValue(item, bodyRules, `${path}[${index}]`, summary));
@@ -370,17 +360,14 @@ const maskJsonValue = (
   );
 };
 
-const incrementHeaderReport = (
-  report: ApiLogExportCustomMaskingReport,
-  side: 'request' | 'response'
-): void => {
+const incrementHeaderReport = (report: ApiLogExportCustomMaskingReport, side: MaskingSide): void => {
   if (side === 'request') report.requestHeaderValuesRedacted += 1;
   else report.responseHeaderValuesRedacted += 1;
 };
 
 const incrementBodyReport = (
   report: ApiLogExportCustomMaskingReport,
-  side: 'request' | 'response',
+  side: MaskingSide,
   count: number
 ): void => {
   if (side === 'request') report.requestBodyFieldsRedacted += count;
@@ -394,10 +381,7 @@ const toRuleCounts = (rules: ApiLogExportCustomMaskingRules): Record<string, num
 });
 
 const splitRuleText = (value: string): string[] =>
-  value
-    .split(/[\n,]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
+  value.split(/[\n,]+/).map((item) => item.trim()).filter(Boolean);
 
 const findInvalidCategory = (rules: ApiLogExportCustomMaskingRules): string | undefined => {
   const categories = [
@@ -427,10 +411,8 @@ const findInvalidCategory = (rules: ApiLogExportCustomMaskingRules): string | un
   return undefined;
 };
 
-const isRuleList = (value: unknown): value is string[] => {
-  if (!Array.isArray(value)) return false;
-  return !findInvalidCategory({ queryNames: value as string[], headerNames: [], bodyFieldNames: [] });
-};
+const isRuleList = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === 'string');
 
 const normalizeRuleList = (values: string[]): string[] =>
   values.map((value) => value.normalize('NFKC').trim());
