@@ -1,6 +1,7 @@
 import type { ApiLogEntry, Workspace } from '../contracts';
 import {
   createSafeApiLogExport,
+  isApiLogExportRequest,
   isSensitiveExportHeaderName,
   maxApiLogExportEntries,
   sanitizeExportUrl,
@@ -9,6 +10,16 @@ import {
   type ApiLogExportRequest,
   type SafeApiLogExportArtifact
 } from './apiLogExport';
+import {
+  applyApiLogExportCustomMasking,
+  createEmptyApiLogExportCustomMaskingReport,
+  emptyApiLogExportCustomMaskingRules,
+  isApiLogExportCustomMaskingRules,
+  matchesApiLogExportCustomRule,
+  normalizeApiLogExportCustomMaskingRules,
+  type ApiLogExportCustomMaskingReport,
+  type ApiLogExportCustomMaskingRules
+} from './apiLogExportCustomMasking';
 import { isSensitiveRequestBodyFieldName, type SafeRequestBodyPreview } from './requestBody';
 import type { SafeResponseBodyPreview } from './responseBody';
 
@@ -17,6 +28,10 @@ export const apiLogExportPreviewContentMaxChars = 12_000;
 export const apiLogExportPreviewSampleLimit = 10;
 
 export type ApiLogExportBodyState = 'included' | 'unavailable' | 'not-captured';
+
+export interface ApiLogExportPreviewRequest extends ApiLogExportRequest {
+  customMaskingRules?: ApiLogExportCustomMaskingRules;
+}
 
 export interface ApiLogExportMaskingReport {
   urlUserInfoRemoved: number;
@@ -32,6 +47,7 @@ export interface ApiLogExportMaskingReport {
   requestBodiesUnavailable: number;
   responseBodiesUnavailable: number;
   networkErrorStringsExcluded: number;
+  custom: ApiLogExportCustomMaskingReport;
 }
 
 export interface ApiLogExportPreviewEntry {
@@ -51,6 +67,7 @@ export interface ApiLogExportPreviewEntry {
 export interface PreparedApiLogExportPreview {
   artifact: SafeApiLogExportArtifact;
   exportedAt: number;
+  customMaskingRules: ApiLogExportCustomMaskingRules;
   maskingReport: ApiLogExportMaskingReport;
   sampleEntries: ApiLogExportPreviewEntry[];
 }
@@ -68,6 +85,7 @@ export interface ApiLogExportPreview {
   artifactSha256: string;
   contentPreview: string;
   isContentPreviewTruncated: boolean;
+  customMaskingRules: ApiLogExportCustomMaskingRules;
   maskingReport: ApiLogExportMaskingReport;
   sampleEntries: ApiLogExportPreviewEntry[];
 }
@@ -117,6 +135,24 @@ export type ApiLogExportSaveResult =
 const urlHeaderNames = new Set(['location', 'content-location', 'referer', 'referrer']);
 const sensitiveQueryNames = new Set(['signature', 'sig', 'credential', 'jwt', 'authcode', 'authorizationcode']);
 
+export const isApiLogExportPreviewRequest = (value: unknown): value is ApiLogExportPreviewRequest => {
+  if (!isApiLogExportRequest(value) || !isRecord(value)) return false;
+  if (value.customMaskingRules === undefined) return true;
+  if (!isRecord(value.customMaskingRules)) return false;
+  const candidate = value.customMaskingRules;
+  if (
+    !Array.isArray(candidate.queryNames) ||
+    !candidate.queryNames.every((item) => typeof item === 'string') ||
+    !Array.isArray(candidate.headerNames) ||
+    !candidate.headerNames.every((item) => typeof item === 'string') ||
+    !Array.isArray(candidate.bodyFieldNames) ||
+    !candidate.bodyFieldNames.every((item) => typeof item === 'string')
+  ) {
+    return false;
+  }
+  return isApiLogExportCustomMaskingRules(candidate);
+};
+
 export const isApiLogExportSaveRequest = (value: unknown): value is ApiLogExportSaveRequest =>
   isPreviewIdRequest(value);
 
@@ -128,6 +164,7 @@ export const createPreparedApiLogExportPreview = (input: {
   logs: ApiLogEntry[];
   format: ApiLogExportFormat;
   filterKind: ApiLogExportFilterKind;
+  customMaskingRules?: ApiLogExportCustomMaskingRules;
   exportedAt?: number;
   maxEntries?: number;
 }): PreparedApiLogExportPreview => {
@@ -139,26 +176,39 @@ export const createPreparedApiLogExportPreview = (input: {
   const selectedLogs = input.logs
     .filter((log) => log.workspaceId === input.workspace.id && matchesFilter(log, input.filterKind))
     .slice(0, limit);
+  const customMaskingRules = normalizeApiLogExportCustomMaskingRules(input.customMaskingRules);
 
-  const artifact = createSafeApiLogExport({
-    ...input,
+  const baseArtifact = createSafeApiLogExport({
+    workspace: input.workspace,
+    logs: input.logs,
+    format: input.format,
+    filterKind: input.filterKind,
     exportedAt,
     maxEntries: limit
   });
+  const customMasking = applyApiLogExportCustomMasking(baseArtifact, customMaskingRules);
+  const automaticReport = selectedLogs.reduce(addLogToMaskingReport, createEmptyMaskingReport());
 
   return {
-    artifact,
+    artifact: customMasking.artifact,
     exportedAt,
-    maskingReport: selectedLogs.reduce(addLogToMaskingReport, createEmptyMaskingReport()),
-    sampleEntries: selectedLogs.slice(0, apiLogExportPreviewSampleLimit).map(toPreviewEntry)
+    customMaskingRules: customMasking.rules,
+    maskingReport: {
+      ...automaticReport,
+      custom: customMasking.report
+    },
+    sampleEntries: selectedLogs
+      .slice(0, apiLogExportPreviewSampleLimit)
+      .map((log) => toPreviewEntry(log, customMaskingRules))
   };
 };
 
 export const createApiLogExportRequest = (
   workspaceId: string,
   format: ApiLogExportFormat,
-  filterKind: ApiLogExportFilterKind
-): ApiLogExportRequest => ({ workspaceId, format, filterKind });
+  filterKind: ApiLogExportFilterKind,
+  customMaskingRules: ApiLogExportCustomMaskingRules = emptyApiLogExportCustomMaskingRules()
+): ApiLogExportPreviewRequest => ({ workspaceId, format, filterKind, customMaskingRules });
 
 const addLogToMaskingReport = (
   report: ApiLogExportMaskingReport,
@@ -184,11 +234,14 @@ const addLogToMaskingReport = (
   return report;
 };
 
-const toPreviewEntry = (log: ApiLogEntry): ApiLogExportPreviewEntry => ({
+const toPreviewEntry = (
+  log: ApiLogEntry,
+  customMaskingRules: ApiLogExportCustomMaskingRules
+): ApiLogExportPreviewEntry => ({
   id: log.id,
   resourceType: log.type,
   method: log.method.toUpperCase(),
-  url: sanitizeExportUrl(log.url),
+  url: sanitizePreviewUrl(log.url, customMaskingRules.queryNames),
   status: log.status,
   requestHeaderValuesRedacted: analyzeHeaders(log.requestHeaders).valuesRedacted,
   responseHeaderValuesRedacted: analyzeHeaders(log.responseHeaders).valuesRedacted,
@@ -197,6 +250,25 @@ const toPreviewEntry = (log: ApiLogEntry): ApiLogExportPreviewEntry => ({
   requestBodyFieldsRedacted: log.requestBody?.redactedFieldPaths.length ?? 0,
   responseBodyFieldsRedacted: log.responseBody?.redactedFieldPaths.length ?? 0
 });
+
+const sanitizePreviewUrl = (value: string, customQueryRules: string[]): string => {
+  const sanitized = sanitizeExportUrl(value);
+  if (customQueryRules.length === 0 || sanitized === '<redacted-invalid-url>') return sanitized;
+  try {
+    const url = new URL(sanitized);
+    const entries = [...url.searchParams.entries()];
+    url.search = '';
+    entries.forEach(([name, itemValue]) => {
+      url.searchParams.append(
+        name,
+        matchesApiLogExportCustomRule(name, customQueryRules) ? '<redacted>' : itemValue
+      );
+    });
+    return url.toString();
+  } catch {
+    return sanitized;
+  }
+};
 
 const toRequestBodyState = (body?: SafeRequestBodyPreview): ApiLogExportBodyState => {
   if (!body) return 'not-captured';
@@ -274,7 +346,8 @@ const createEmptyMaskingReport = (): ApiLogExportMaskingReport => ({
   responseBodyFieldsRedacted: 0,
   requestBodiesUnavailable: 0,
   responseBodiesUnavailable: 0,
-  networkErrorStringsExcluded: 0
+  networkErrorStringsExcluded: 0,
+  custom: createEmptyApiLogExportCustomMaskingReport()
 });
 
 const matchesFilter = (log: ApiLogEntry, filterKind: ApiLogExportFilterKind): boolean =>
