@@ -1,5 +1,6 @@
 export * from './contracts';
 export * from './domain/apiLogExport';
+export * from './domain/apiLogExportCustomMasking';
 export * from './domain/apiLogExportPreview';
 export * from './domain/environment';
 export * from './domain/inspector';
