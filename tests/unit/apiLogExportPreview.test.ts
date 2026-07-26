@@ -5,6 +5,7 @@ import {
   apiLogExportPreviewSampleLimit,
   createPreparedApiLogExportPreview,
   isApiLogExportDiscardRequest,
+  isApiLogExportPreviewRequest,
   isApiLogExportSaveRequest
 } from '../../shared/domain/apiLogExportPreview';
 
@@ -88,6 +89,14 @@ const unavailableLog: ApiLogEntry = createSafeLog({
   finishedAt: 400
 });
 
+const emptyCustomReport = {
+  queryValuesRedacted: 0,
+  requestHeaderValuesRedacted: 0,
+  responseHeaderValuesRedacted: 0,
+  requestBodyFieldsRedacted: 0,
+  responseBodyFieldsRedacted: 0
+};
+
 describe('APIログエクスポートプレビュー', () => {
   it('実際の出力対象ログからマスキング件数と取得不可件数を集計する', () => {
     const prepared = createPreparedApiLogExportPreview({
@@ -111,8 +120,68 @@ describe('APIログエクスポートプレビュー', () => {
       responseBodyFieldsRedacted: 1,
       requestBodiesUnavailable: 1,
       responseBodiesUnavailable: 1,
-      networkErrorStringsExcluded: 1
+      networkErrorStringsExcluded: 1,
+      custom: emptyCustomReport
     });
+  });
+
+  it('追加ルールを自動マスキングと分けて集計し、成果物とサンプルへ反映する', () => {
+    const log = createSafeLog({
+      url: 'https://example.com/api/users?customer_id=customer-123&name=Mizzz',
+      requestHeaders: {
+        'x-customer-id': 'header-customer-123',
+        accept: 'application/json'
+      },
+      responseHeaders: {
+        'x-customer-id': 'response-customer-123'
+      },
+      requestBody: {
+        kind: 'json',
+        contentType: 'application/json',
+        content: '{"email":"user@example.com","password":"<redacted>"}',
+        byteLength: 64,
+        isTruncated: false,
+        redactedFieldPaths: ['password']
+      },
+      responseBody: {
+        kind: 'json',
+        contentType: 'application/json',
+        content: '{"profile":{"customerId":"customer-123"}}',
+        byteLength: 52,
+        isTruncated: false,
+        redactedFieldPaths: []
+      }
+    });
+    const prepared = createPreparedApiLogExportPreview({
+      workspace,
+      logs: [log],
+      format: 'json',
+      filterKind: 'all',
+      exportedAt: 1_000,
+      customMaskingRules: {
+        queryNames: ['customer_id'],
+        headerNames: ['X-Customer-ID'],
+        bodyFieldNames: ['email', 'customer_id']
+      }
+    });
+
+    expect(prepared.customMaskingRules).toEqual({
+      queryNames: ['customer_id'],
+      headerNames: ['X-Customer-ID'],
+      bodyFieldNames: ['email', 'customer_id']
+    });
+    expect(prepared.maskingReport.custom).toEqual({
+      queryValuesRedacted: 1,
+      requestHeaderValuesRedacted: 1,
+      responseHeaderValuesRedacted: 1,
+      requestBodyFieldsRedacted: 1,
+      responseBodyFieldsRedacted: 1
+    });
+    expect(prepared.sampleEntries[0]?.url).toContain('customer_id=%3Credacted%3E');
+    expect(prepared.artifact.content).not.toContain('customer-123');
+    expect(prepared.artifact.content).not.toContain('header-customer-123');
+    expect(prepared.artifact.content).not.toContain('response-customer-123');
+    expect(prepared.artifact.content).not.toContain('user@example.com');
   });
 
   it('通信サンプルには安全化済みURLとbody状態だけを含める', () => {
@@ -188,6 +257,44 @@ describe('APIログエクスポートプレビュー', () => {
     expect(prepared.sampleEntries).toHaveLength(1);
     expect(prepared.maskingReport.invalidUrlsRedacted).toBe(1);
     expect(prepared.maskingReport.urlUserInfoRemoved).toBe(0);
+  });
+
+  it('プレビュー要求の追加ルールをruntime validationする', () => {
+    const base = { workspaceId: 'workspace-1', format: 'json', filterKind: 'all' };
+
+    expect(isApiLogExportPreviewRequest(base)).toBe(true);
+    expect(isApiLogExportPreviewRequest({
+      ...base,
+      customMaskingRules: {
+        queryNames: ['customer_id'],
+        headerNames: ['x-customer-id'],
+        bodyFieldNames: ['email']
+      }
+    })).toBe(true);
+    expect(isApiLogExportPreviewRequest({
+      ...base,
+      customMaskingRules: {
+        queryNames: ['customer_id', 'customerId'],
+        headerNames: [],
+        bodyFieldNames: []
+      }
+    })).toBe(false);
+    expect(isApiLogExportPreviewRequest({
+      ...base,
+      customMaskingRules: {
+        queryNames: [123],
+        headerNames: [],
+        bodyFieldNames: []
+      }
+    })).toBe(false);
+    expect(isApiLogExportPreviewRequest({
+      ...base,
+      customMaskingRules: {
+        queryNames: Array.from({ length: 21 }, (_, index) => `field-${index}`),
+        headerNames: [],
+        bodyFieldNames: []
+      }
+    })).toBe(false);
   });
 
   it('保存・破棄IPCへ渡すpreview IDをruntime validationする', () => {
