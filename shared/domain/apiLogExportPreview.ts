@@ -12,10 +12,10 @@ import {
 } from './apiLogExport';
 import {
   applyApiLogExportCustomMasking,
+  applyApiLogExportCustomMaskingToUrl,
   createEmptyApiLogExportCustomMaskingReport,
   emptyApiLogExportCustomMaskingRules,
   isApiLogExportCustomMaskingRules,
-  matchesApiLogExportCustomRule,
   normalizeApiLogExportCustomMaskingRules,
   type ApiLogExportCustomMaskingReport,
   type ApiLogExportCustomMaskingRules
@@ -141,6 +141,8 @@ export const isApiLogExportPreviewRequest = (value: unknown): value is ApiLogExp
   if (!isRecord(value.customMaskingRules)) return false;
   const candidate = value.customMaskingRules;
   if (
+    !Array.isArray(candidate.pathSegmentValues) ||
+    !candidate.pathSegmentValues.every((item) => typeof item === 'string') ||
     !Array.isArray(candidate.queryNames) ||
     !candidate.queryNames.every((item) => typeof item === 'string') ||
     !Array.isArray(candidate.headerNames) ||
@@ -241,7 +243,7 @@ const toPreviewEntry = (
   id: log.id,
   resourceType: log.type,
   method: log.method.toUpperCase(),
-  url: sanitizePreviewUrl(log.url, customMaskingRules.queryNames),
+  url: sanitizePreviewUrl(log.url, customMaskingRules),
   status: log.status,
   requestHeaderValuesRedacted: analyzeHeaders(log.requestHeaders).valuesRedacted,
   responseHeaderValuesRedacted: analyzeHeaders(log.responseHeaders).valuesRedacted,
@@ -251,23 +253,10 @@ const toPreviewEntry = (
   responseBodyFieldsRedacted: log.responseBody?.redactedFieldPaths.length ?? 0
 });
 
-const sanitizePreviewUrl = (value: string, customQueryRules: string[]): string => {
+const sanitizePreviewUrl = (value: string, customMaskingRules: ApiLogExportCustomMaskingRules): string => {
   const sanitized = sanitizeExportUrl(value);
-  if (customQueryRules.length === 0 || sanitized === '<redacted-invalid-url>') return sanitized;
-  try {
-    const url = new URL(sanitized);
-    const entries = [...url.searchParams.entries()];
-    url.search = '';
-    entries.forEach(([name, itemValue]) => {
-      url.searchParams.append(
-        name,
-        matchesApiLogExportCustomRule(name, customQueryRules) ? '<redacted>' : itemValue
-      );
-    });
-    return url.toString();
-  } catch {
-    return sanitized;
-  }
+  if (sanitized === '<redacted-invalid-url>') return sanitized;
+  return applyApiLogExportCustomMaskingToUrl(sanitized, customMaskingRules).value;
 };
 
 const toRequestBodyState = (body?: SafeRequestBodyPreview): ApiLogExportBodyState => {

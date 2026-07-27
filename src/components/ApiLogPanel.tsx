@@ -319,6 +319,18 @@ export const ApiLogPanel = () => {
     await generateExportPreview(exportPreview.format, rules, 'refresh');
   };
 
+  const togglePathSegment = (value: string): void => {
+    if (isPreviewBusy) return;
+    setMaskingDraft((current) => {
+      const currentValues = splitDraftValues(current.pathSegmentValuesText);
+      const nextValues = currentValues.includes(value)
+        ? currentValues.filter((item) => item !== value)
+        : [...currentValues, value];
+      return { ...current, pathSegmentValuesText: nextValues.join('\n') };
+    });
+    setPreviewFeedback(undefined);
+  };
+
   const closeExportPreview = (): void => {
     if (!exportPreview || isPreviewBusy) return;
     const previewId = exportPreview.previewId;
@@ -418,7 +430,7 @@ export const ApiLogPanel = () => {
             </div>
           </div>
           <p className="text-[10px] leading-4 text-slate-500">
-            現在の{filter.kind}ログを最大500件安全化し、必要に応じて追加マスキングしてから保存します。
+            現在の{filter.kind}ログを最大500件安全化し、必要に応じてpath・query・header・bodyを追加マスキングしてから保存します。
           </p>
           {exportFeedback ? (
             <p
@@ -488,6 +500,7 @@ export const ApiLogPanel = () => {
           hasUnappliedRuleChanges={hasUnappliedRuleChanges}
           feedback={previewFeedback}
           onMaskingDraftChange={setMaskingDraft}
+          onTogglePathSegment={togglePathSegment}
           onApplyRules={() => void applyCustomMaskingRules()}
           onClearRules={() => void clearCustomMaskingRules()}
           onClose={closeExportPreview}
@@ -499,12 +512,14 @@ export const ApiLogPanel = () => {
 };
 
 const createEmptyMaskingDraft = (): ApiLogExportMaskingDraft => ({
+  pathSegmentValuesText: '',
   queryNamesText: '',
   headerNamesText: '',
   bodyFieldNamesText: ''
 });
 
 const toMaskingDraft = (rules: ApiLogExportCustomMaskingRules): ApiLogExportMaskingDraft => ({
+  pathSegmentValuesText: rules.pathSegmentValues.join('\n'),
   queryNamesText: rules.queryNames.join('\n'),
   headerNamesText: rules.headerNames.join('\n'),
   bodyFieldNamesText: rules.bodyFieldNames.join('\n')
@@ -514,6 +529,7 @@ const areMaskingRulesEqual = (
   left: ApiLogExportCustomMaskingRules,
   right: ApiLogExportCustomMaskingRules
 ): boolean =>
+  areRuleListsEqual(left.pathSegmentValues, right.pathSegmentValues) &&
   areRuleListsEqual(left.queryNames, right.queryNames) &&
   areRuleListsEqual(left.headerNames, right.headerNames) &&
   areRuleListsEqual(left.bodyFieldNames, right.bodyFieldNames);
@@ -522,4 +538,7 @@ const areRuleListsEqual = (left: string[], right: string[]): boolean =>
   left.length === right.length && left.every((value, index) => value === right[index]);
 
 const countMaskingRules = (rules: ApiLogExportCustomMaskingRules): number =>
-  rules.queryNames.length + rules.headerNames.length + rules.bodyFieldNames.length;
+  rules.pathSegmentValues.length + rules.queryNames.length + rules.headerNames.length + rules.bodyFieldNames.length;
+
+const splitDraftValues = (value: string): string[] =>
+  value.split(/[\n,]+/).map((item) => item.trim()).filter(Boolean);
