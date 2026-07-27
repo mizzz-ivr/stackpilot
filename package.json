@@ -2,7 +2,7 @@
   "name": "stackpilot",
   "version": "0.1.0",
   "description": "Developer workspace browser built with Electron + React",
-  "main": "dist-electron/main/index.js",
+  "main": "dist-electron/electron/main/index.js",
   "author": "stackpilot team",
   "license": "MIT",
   "packageManager": "pnpm@9.12.3",
