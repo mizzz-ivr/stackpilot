@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { JsonRepository } from './persistence/jsonRepository';
 import { WorkspaceService } from './services/workspaceService';
 import { ApiLogService } from './services/apiLogService';
@@ -66,7 +67,7 @@ const createWindow = async (): Promise<void> => {
 
   mainWindow.on('resize', () => browserViewManager.resize(mainWindow!));
 
-  const rendererUrl = process.env.VITE_DEV_SERVER_URL ?? `file://${join(__dirname, '../../dist/index.html')}`;
+  const rendererUrl = process.env.VITE_DEV_SERVER_URL ?? pathToFileURL(join(__dirname, '../../../dist/index.html')).toString();
   await mainWindow.loadURL(rendererUrl);
 };
 
