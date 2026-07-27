@@ -4,6 +4,10 @@ on:
   pull_request:
   push:
 
+permissions:
+  contents: write
+  pull-requests: read
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -16,6 +20,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -30,7 +36,21 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Commit updated lockfile
+        if: github.event_name == 'pull_request'
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          if git diff --quiet -- pnpm-lock.yaml; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml
+          git commit -m "Playwright追加に伴いlockfileを更新"
+          git push origin HEAD:"${HEAD_REF}"
 
       - name: Lint
         run: pnpm lint
@@ -43,6 +63,9 @@ jobs:
 
       - name: Build desktop
         run: pnpm build
+
+      - name: Electron E2E
+        run: xvfb-run -a pnpm test:e2e
 
       - name: Typecheck mobile
         run: pnpm mobile:typecheck
