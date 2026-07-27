@@ -90,12 +90,20 @@ const unavailableLog: ApiLogEntry = createSafeLog({
 });
 
 const emptyCustomReport = {
+  pathSegmentsRedacted: 0,
   queryValuesRedacted: 0,
   requestHeaderValuesRedacted: 0,
   responseHeaderValuesRedacted: 0,
   requestBodyFieldsRedacted: 0,
   responseBodyFieldsRedacted: 0
 };
+
+const emptyRules = () => ({
+  pathSegmentValues: [],
+  queryNames: [],
+  headerNames: [],
+  bodyFieldNames: []
+});
 
 describe('APIログエクスポートプレビュー', () => {
   it('実際の出力対象ログからマスキング件数と取得不可件数を集計する', () => {
@@ -125,9 +133,9 @@ describe('APIログエクスポートプレビュー', () => {
     });
   });
 
-  it('追加ルールを自動マスキングと分けて集計し、成果物とサンプルへ反映する', () => {
+  it('pathを含む追加ルールを自動マスキングと分けて集計し、成果物とサンプルへ反映する', () => {
     const log = createSafeLog({
-      url: 'https://example.com/api/users?customer_id=customer-123&name=Mizzz',
+      url: 'https://example.com/api/customers/customer-123?customer_id=customer-123&name=Mizzz',
       requestHeaders: {
         'x-customer-id': 'header-customer-123',
         accept: 'application/json'
@@ -159,6 +167,7 @@ describe('APIログエクスポートプレビュー', () => {
       filterKind: 'all',
       exportedAt: 1_000,
       customMaskingRules: {
+        pathSegmentValues: ['customer-123'],
         queryNames: ['customer_id'],
         headerNames: ['X-Customer-ID'],
         bodyFieldNames: ['email', 'customer_id']
@@ -166,17 +175,20 @@ describe('APIログエクスポートプレビュー', () => {
     });
 
     expect(prepared.customMaskingRules).toEqual({
+      pathSegmentValues: ['customer-123'],
       queryNames: ['customer_id'],
       headerNames: ['X-Customer-ID'],
       bodyFieldNames: ['email', 'customer_id']
     });
     expect(prepared.maskingReport.custom).toEqual({
+      pathSegmentsRedacted: 1,
       queryValuesRedacted: 1,
       requestHeaderValuesRedacted: 1,
       responseHeaderValuesRedacted: 1,
       requestBodyFieldsRedacted: 1,
       responseBodyFieldsRedacted: 1
     });
+    expect(prepared.sampleEntries[0]?.url).toContain('/customers/%3Credacted-path%3E');
     expect(prepared.sampleEntries[0]?.url).toContain('customer_id=%3Credacted%3E');
     expect(prepared.artifact.content).not.toContain('customer-123');
     expect(prepared.artifact.content).not.toContain('header-customer-123');
@@ -266,6 +278,7 @@ describe('APIログエクスポートプレビュー', () => {
     expect(isApiLogExportPreviewRequest({
       ...base,
       customMaskingRules: {
+        pathSegmentValues: ['customer-123'],
         queryNames: ['customer_id'],
         headerNames: ['x-customer-id'],
         bodyFieldNames: ['email']
@@ -274,25 +287,29 @@ describe('APIログエクスポートプレビュー', () => {
     expect(isApiLogExportPreviewRequest({
       ...base,
       customMaskingRules: {
-        queryNames: ['customer_id', 'customerId'],
-        headerNames: [],
-        bodyFieldNames: []
+        ...emptyRules(),
+        pathSegmentValues: ['/customers/123']
       }
     })).toBe(false);
     expect(isApiLogExportPreviewRequest({
       ...base,
       customMaskingRules: {
-        queryNames: [123],
-        headerNames: [],
-        bodyFieldNames: []
+        ...emptyRules(),
+        queryNames: ['customer_id', 'customerId']
       }
     })).toBe(false);
     expect(isApiLogExportPreviewRequest({
       ...base,
       customMaskingRules: {
-        queryNames: Array.from({ length: 21 }, (_, index) => `field-${index}`),
-        headerNames: [],
-        bodyFieldNames: []
+        ...emptyRules(),
+        pathSegmentValues: [123]
+      }
+    })).toBe(false);
+    expect(isApiLogExportPreviewRequest({
+      ...base,
+      customMaskingRules: {
+        ...emptyRules(),
+        queryNames: Array.from({ length: 21 }, (_, index) => `field-${index}`)
       }
     })).toBe(false);
   });
