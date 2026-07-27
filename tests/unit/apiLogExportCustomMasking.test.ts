@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { ApiLogEntry, Workspace } from '../../shared/contracts';
 import { createSafeApiLogExport } from '../../shared/domain/apiLogExport';
 import {
+  apiLogExportRedactedPathSegment,
   applyApiLogExportCustomMasking,
+  applyApiLogExportCustomMaskingToUrl,
+  extractApiLogExportSelectablePathSegments,
   isApiLogExportCustomMaskingRules,
   parseApiLogExportCustomMaskingRuleText
 } from '../../shared/domain/apiLogExportCustomMasking';
@@ -56,15 +59,24 @@ const createLog = (overrides: Partial<ApiLogEntry> = {}): ApiLogEntry => ({
   ...overrides
 });
 
+const emptyRules = () => ({
+  pathSegmentValues: [],
+  queryNames: [],
+  headerNames: [],
+  bodyFieldNames: []
+});
+
 describe('APIログの一時追加マスキング', () => {
-  it('カンマ・改行区切りを解析し、正規化後の重複を拒否する', () => {
+  it('カンマ・改行区切りを解析し、項目名とpath値をそれぞれの規則で検証する', () => {
     expect(parseApiLogExportCustomMaskingRuleText({
+      pathSegmentValuesText: 'Customer-001\ncustomer-001',
       queryNamesText: 'employee_id, customerCode',
       headerNamesText: 'X-Internal-Reference\nX-Customer-ID',
       bodyFieldNamesText: 'email\nemployeeId'
     })).toEqual({
       status: 'valid',
       rules: {
+        pathSegmentValues: ['Customer-001', 'customer-001'],
         queryNames: ['employee_id', 'customerCode'],
         headerNames: ['X-Internal-Reference', 'X-Customer-ID'],
         bodyFieldNames: ['email', 'employeeId']
@@ -72,66 +84,144 @@ describe('APIログの一時追加マスキング', () => {
     });
 
     expect(parseApiLogExportCustomMaskingRuleText({
+      pathSegmentValuesText: '',
       queryNamesText: 'employee_id, employeeId',
+      headerNamesText: '',
+      bodyFieldNamesText: ''
+    })).toMatchObject({ status: 'invalid' });
+
+    expect(parseApiLogExportCustomMaskingRuleText({
+      pathSegmentValuesText: '１２３, 123',
+      queryNamesText: '',
       headerNamesText: '',
       bodyFieldNamesText: ''
     })).toMatchObject({ status: 'invalid' });
   });
 
-  it('runtime validationで非文字列・件数超過・制御文字を拒否する', () => {
+  it('runtime validationでpathの予約値・区切り文字・件数超過・非文字列を拒否する', () => {
     expect(isApiLogExportCustomMaskingRules({
+      pathSegmentValues: ['Customer-001', 'customer-001'],
       queryNames: ['employee_id'],
       headerNames: ['x-internal-reference'],
       bodyFieldNames: ['email']
     })).toBe(true);
     expect(isApiLogExportCustomMaskingRules({
-      queryNames: [123],
-      headerNames: [],
-      bodyFieldNames: []
+      ...emptyRules(),
+      pathSegmentValues: [123]
     })).toBe(false);
     expect(isApiLogExportCustomMaskingRules({
-      queryNames: Array.from({ length: 21 }, (_, index) => `field-${index}`),
-      headerNames: [],
-      bodyFieldNames: []
+      ...emptyRules(),
+      pathSegmentValues: ['/users/123']
     })).toBe(false);
     expect(isApiLogExportCustomMaskingRules({
-      queryNames: ['employee\nname'],
-      headerNames: [],
-      bodyFieldNames: []
+      ...emptyRules(),
+      pathSegmentValues: ['..']
+    })).toBe(false);
+    expect(isApiLogExportCustomMaskingRules({
+      ...emptyRules(),
+      pathSegmentValues: [apiLogExportRedactedPathSegment]
+    })).toBe(false);
+    expect(isApiLogExportCustomMaskingRules({
+      ...emptyRules(),
+      pathSegmentValues: Array.from({ length: 21 }, (_, index) => `segment-${index}`)
+    })).toBe(false);
+    expect(isApiLogExportCustomMaskingRules({
+      ...emptyRules(),
+      queryNames: ['employee\nname']
     })).toBe(false);
   });
 
-  it('Safe JSONのquery・header・ネストJSON・配列内フィールドを追加伏字化する', () => {
+  it('URL変換はpathの完全一致だけを伏字化し、hostnameと未指定queryを維持する', () => {
+    const result = applyApiLogExportCustomMaskingToUrl(
+      'https://customer-001.example.com/api/customer-001/orders/customer-001?value=customer-001',
+      {
+        ...emptyRules(),
+        pathSegmentValues: ['customer-001']
+      }
+    );
+
+    expect(result.pathSegmentsRedacted).toBe(2);
+    expect(result.queryValuesRedacted).toBe(0);
+    expect(result.value).toBe(
+      'https://customer-001.example.com/api/%3Credacted-path%3E/orders/%3Credacted-path%3E?value=customer-001'
+    );
+  });
+
+  it('percent-encoded path segmentをdecodeした値で完全一致する', () => {
+    const result = applyApiLogExportCustomMaskingToUrl(
+      'https://example.com/users/%E5%B1%B1%E7%94%B0%20%E5%A4%AA%E9%83%8E/profile',
+      {
+        ...emptyRules(),
+        pathSegmentValues: ['山田 太郎']
+      }
+    );
+
+    expect(result.pathSegmentsRedacted).toBe(1);
+    expect(result.value).toBe('https://example.com/users/%3Credacted-path%3E/profile');
+  });
+
+  it('サンプル選択候補から空segment・予約値・伏字済みsegmentを除外する', () => {
+    expect(extractApiLogExportSelectablePathSegments(
+      'https://example.com/api//users/123/123/%3Credacted-path%3E'
+    )).toEqual(['api', 'users', '123']);
+    expect(extractApiLogExportSelectablePathSegments('not-a-url')).toEqual([]);
+  });
+
+  it('Safe JSONのpath・query・URL値header・ネストbodyを追加伏字化する', () => {
+    const log = createLog({
+      url: 'https://customer-001.example.com/api/customer-001/orders/customer-001?customer_id=customer-001',
+      requestHeaders: {
+        location: 'https://example.com/redirect/customer-001?customer_id=customer-001',
+        'x-internal-reference': 'internal-001'
+      },
+      responseHeaders: {
+        'content-location': 'https://example.com/result/customer-001',
+        'x-internal-reference': 'response-internal-001'
+      }
+    });
     const baseArtifact = createSafeApiLogExport({
       workspace,
-      logs: [createLog()],
+      logs: [log],
       format: 'json',
       filterKind: 'all',
       exportedAt: 1_000
     });
     const result = applyApiLogExportCustomMasking(baseArtifact, {
-      queryNames: ['employee_id'],
+      pathSegmentValues: ['customer-001'],
+      queryNames: ['customer_id'],
       headerNames: ['x_internal_reference'],
       bodyFieldNames: ['email', 'employee_id']
     });
+    const payload = JSON.parse(result.artifact.content) as {
+      logs: Array<{
+        url: string;
+        requestHeaders: Record<string, string>;
+        responseHeaders: Record<string, string>;
+      }>;
+    };
+    const exported = payload.logs[0];
 
     expect(result.report).toEqual({
-      queryValuesRedacted: 1,
+      pathSegmentsRedacted: 4,
+      queryValuesRedacted: 2,
       requestHeaderValuesRedacted: 1,
       responseHeaderValuesRedacted: 1,
       requestBodyFieldsRedacted: 2,
       responseBodyFieldsRedacted: 2
     });
-    expect(result.artifact.content).not.toContain('employee-001');
+    expect(exported.url).toContain('customer-001.example.com');
+    expect(exported.url).toContain('/api/%3Credacted-path%3E/orders/%3Credacted-path%3E');
+    expect(exported.url).toContain('customer_id=%3Credacted%3E');
+    expect(exported.requestHeaders.location).toContain('/redirect/%3Credacted-path%3E');
+    expect(exported.responseHeaders['content-location']).toContain('/result/%3Credacted-path%3E');
     expect(result.artifact.content).not.toContain('internal-001');
     expect(result.artifact.content).not.toContain('response-internal-001');
     expect(result.artifact.content).not.toContain('user@example.com');
-    expect(result.artifact.content).toContain('<redacted>');
   });
 
-  it('HARのURL・queryString・header・form-urlencodedへ同じ追加ルールを適用する', () => {
+  it('HARのURL・redirectURL・queryString・header・form-urlencodedへ同じ追加ルールを適用する', () => {
     const formLog = createLog({
-      url: 'https://example.com/api/users?employee_id=employee-001',
+      url: 'https://example.com/api/employee-001?employee_id=employee-001',
       requestHeaders: {
         'content-type': 'application/x-www-form-urlencoded',
         'x-internal-reference': 'internal-001'
@@ -145,6 +235,7 @@ describe('APIログの一時追加マスキング', () => {
         redactedFieldPaths: []
       },
       responseHeaders: {
+        location: 'https://example.com/next/employee-001',
         'x-internal-reference': 'response-internal-001'
       }
     });
@@ -156,6 +247,7 @@ describe('APIログの一時追加マスキング', () => {
       exportedAt: 1_000
     });
     const result = applyApiLogExportCustomMasking(baseArtifact, {
+      pathSegmentValues: ['employee-001'],
       queryNames: ['employeeId'],
       headerNames: ['X-Internal-Reference'],
       bodyFieldNames: ['email', 'employeeId']
@@ -169,26 +261,32 @@ describe('APIログの一時追加マスキング', () => {
             headers: Array<{ name: string; value: string }>;
             postData?: { text: string };
           };
-          response: { headers: Array<{ name: string; value: string }> };
+          response: {
+            redirectURL: string;
+            headers: Array<{ name: string; value: string }>;
+          };
         }>;
       };
     };
     const entry = payload.log.entries[0];
 
+    expect(entry.request.url).toContain('/api/%3Credacted-path%3E');
     expect(entry.request.url).toContain('employee_id=%3Credacted%3E');
     expect(entry.request.queryString).toContainEqual({ name: 'employee_id', value: '<redacted>' });
     expect(entry.request.headers).toContainEqual({ name: 'x-internal-reference', value: '<redacted>' });
     expect(entry.response.headers).toContainEqual({ name: 'x-internal-reference', value: '<redacted>' });
+    expect(entry.response.redirectURL).toContain('/next/%3Credacted-path%3E');
     expect(entry.request.postData?.text).toContain('email=%3Credacted%3E');
     expect(entry.request.postData?.text).toContain('employee_id=%3Credacted%3E');
     expect(entry.request.postData?.text).toContain('public=value');
+    expect(result.report.pathSegmentsRedacted).toBe(2);
     expect(result.report.queryValuesRedacted).toBe(1);
     expect(result.report.requestBodyFieldsRedacted).toBe(2);
   });
 
-  it('自動伏字済みの値を追加マスキング件数へ重複計上しない', () => {
+  it('伏字済みpath・query・header・bodyを追加件数へ重複計上しない', () => {
     const alreadyRedacted = createLog({
-      url: 'https://example.com/api?access_token=%3Credacted%3E',
+      url: 'https://example.com/api/%3Credacted-path%3E?access_token=%3Credacted%3E',
       requestHeaders: { authorization: '<redacted>' },
       responseHeaders: {},
       requestBody: {
@@ -209,12 +307,14 @@ describe('APIログの一時追加マスキング', () => {
       exportedAt: 1_000
     });
     const result = applyApiLogExportCustomMasking(baseArtifact, {
+      pathSegmentValues: ['not-present'],
       queryNames: ['access_token'],
       headerNames: ['authorization'],
       bodyFieldNames: ['password']
     });
 
     expect(result.report).toEqual({
+      pathSegmentsRedacted: 0,
       queryValuesRedacted: 0,
       requestHeaderValuesRedacted: 0,
       responseHeaderValuesRedacted: 0,
