@@ -279,7 +279,7 @@ describe('APIログの一時追加マスキング', () => {
     expect(entry.request.postData?.text).toContain('email=%3Credacted%3E');
     expect(entry.request.postData?.text).toContain('employee_id=%3Credacted%3E');
     expect(entry.request.postData?.text).toContain('public=value');
-    expect(result.report.pathSegmentsRedacted).toBe(2);
+    expect(result.report.pathSegmentsRedacted).toBe(3);
     expect(result.report.queryValuesRedacted).toBe(1);
     expect(result.report.requestBodyFieldsRedacted).toBe(2);
   });
