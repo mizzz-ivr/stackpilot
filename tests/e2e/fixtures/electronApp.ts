@@ -36,7 +36,7 @@ export const test = base.extend<ElectronE2eFixtures>({
 
   electronApp: async ({ e2ePaths }, use) => {
     const electronApp = await electron.launch({
-      args: [resolve('dist-electron/main/index.js')],
+      args: [resolve('dist-electron/electron/main/index.js')],
       env: {
         ...process.env,
         ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
