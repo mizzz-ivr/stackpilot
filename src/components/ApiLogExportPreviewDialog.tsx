@@ -1,5 +1,6 @@
-import type {
-  ApiLogExportCustomMaskingRules
+import {
+  extractApiLogExportSelectablePathSegments,
+  type ApiLogExportCustomMaskingRules
 } from '../../shared/domain/apiLogExportCustomMasking';
 import type {
   ApiLogExportMaskingReport,
@@ -15,6 +16,7 @@ const bodyStateLabels = {
 } as const;
 
 export interface ApiLogExportMaskingDraft {
+  pathSegmentValuesText: string;
   queryNamesText: string;
   headerNamesText: string;
   bodyFieldNamesText: string;
@@ -33,6 +35,7 @@ interface ApiLogExportPreviewDialogProps {
   hasUnappliedRuleChanges: boolean;
   feedback?: ApiLogExportFeedback;
   onMaskingDraftChange: (draft: ApiLogExportMaskingDraft) => void;
+  onTogglePathSegment: (value: string) => void;
   onApplyRules: () => void;
   onClearRules: () => void;
   onClose: () => void;
@@ -47,6 +50,7 @@ export const ApiLogExportPreviewDialog = ({
   hasUnappliedRuleChanges,
   feedback,
   onMaskingDraftChange,
+  onTogglePathSegment,
   onApplyRules,
   onClearRules,
   onClose,
@@ -54,6 +58,7 @@ export const ApiLogExportPreviewDialog = ({
 }: ApiLogExportPreviewDialogProps) => {
   const isBusy = isSaving || isRefreshing;
   const appliedRuleCount = countRules(preview.customMaskingRules);
+  const selectedPathSegmentValues = splitDraftValues(maskingDraft.pathSegmentValuesText);
 
   return (
     <div
@@ -113,6 +118,7 @@ export const ApiLogExportPreviewDialog = ({
             isBusy={isBusy}
             hasUnappliedRuleChanges={hasUnappliedRuleChanges}
             onChange={onMaskingDraftChange}
+            onTogglePathSegment={onTogglePathSegment}
             onApply={onApplyRules}
             onClear={onClearRules}
           />
@@ -123,8 +129,18 @@ export const ApiLogExportPreviewDialog = ({
           </section>
 
           <section className="space-y-2">
-            <h3 className="text-sm font-semibold text-slate-200">安全化済み通信サンプル</h3>
-            <PreviewEntryList entries={preview.sampleEntries} />
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold text-slate-200">安全化済み通信サンプル</h3>
+              <p className="text-[11px] leading-5 text-slate-500">
+                path segmentをクリックすると追加対象へ切り替えます。同じ値のsegmentすべてに適用されます。
+              </p>
+            </div>
+            <PreviewEntryList
+              entries={preview.sampleEntries}
+              selectedPathSegmentValues={selectedPathSegmentValues}
+              disabled={isBusy}
+              onTogglePathSegment={onTogglePathSegment}
+            />
           </section>
 
           <section className="space-y-2">
@@ -143,8 +159,10 @@ export const ApiLogExportPreviewDialog = ({
             <p className="font-semibold">保存前の確認事項</p>
             <ul className="list-disc space-y-1 pl-5 text-amber-200/90">
               <li>追加ルールはこのプレビューだけに適用され、設定や端末には保存されません。</li>
-              <li>URL pathへ直接埋め込まれたtokenやIDは追加ルールの対象外です。</li>
-              <li>値ベース・正規表現による置換は行いません。項目名が一致した値だけを伏字化します。</li>
+              <li>path segmentは大文字小文字を区別した完全一致で、全出力ログとURL値を持つheaderへ適用されます。</li>
+              <li>静的segmentを選ぶと同じ値が広範囲に伏字化されます。再プレビューの内容と件数を確認してください。</li>
+              <li>hostname・query・bodyはpath segment選択では変更されません。</li>
+              <li>正規表現・部分一致・path全体の編集は行いません。</li>
               <li>このプレビューは2分で失効します。保存時は確認したものと同じ成果物を使用します。</li>
             </ul>
           </section>
@@ -207,6 +225,7 @@ const CustomMaskingEditor = ({
   isBusy,
   hasUnappliedRuleChanges,
   onChange,
+  onTogglePathSegment,
   onApply,
   onClear
 }: {
@@ -215,10 +234,12 @@ const CustomMaskingEditor = ({
   isBusy: boolean;
   hasUnappliedRuleChanges: boolean;
   onChange: (draft: ApiLogExportMaskingDraft) => void;
+  onTogglePathSegment: (value: string) => void;
   onApply: () => void;
   onClear: () => void;
 }) => {
   const appliedRuleCount = countRules(appliedRules);
+  const selectedPathSegmentValues = splitDraftValues(draft.pathSegmentValuesText);
 
   return (
     <section className="space-y-3 rounded-xl border border-indigo-800/50 bg-indigo-950/20 p-4">
@@ -226,13 +247,45 @@ const CustomMaskingEditor = ({
         <div className="space-y-1">
           <h3 className="text-sm font-semibold text-indigo-100">追加マスキング</h3>
           <p className="text-[11px] leading-5 text-slate-400">
-            カンマまたは改行区切りで項目名を指定します。大文字小文字、`-`、`_`、camelCaseの差異を正規化して照合します。
+            カンマまたは改行区切りで指定します。path segmentは値を完全一致、その他は項目名を正規化して照合します。
           </p>
         </div>
         <span className="text-[11px] text-indigo-200">適用中 {appliedRuleCount}件</span>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid gap-3 lg:grid-cols-2">
+        <MaskingRuleInput
+          label="URL path segment値（大文字小文字を区別）"
+          value={draft.pathSegmentValuesText}
+          placeholder={'12345\nreset-token-value'}
+          disabled={isBusy}
+          rows={4}
+          onChange={(value) => onChange({ ...draft, pathSegmentValuesText: value })}
+        />
+        <div className="space-y-1.5 text-xs text-slate-300">
+          <span className="font-medium">選択中のpath segment</span>
+          <div className="min-h-[98px] rounded-lg border border-slate-700 bg-slate-950 p-2">
+            {selectedPathSegmentValues.length === 0 ? (
+              <p className="px-1 py-2 text-[11px] text-slate-600">通信サンプルから選択するか、左の入力欄へ値を入力します。</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {selectedPathSegmentValues.map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    disabled={isBusy}
+                    title="選択から解除"
+                    className="max-w-full rounded-full border border-amber-600/60 bg-amber-500/15 px-2 py-1 text-[11px] text-amber-200 hover:bg-amber-500/25 disabled:opacity-50"
+                    onClick={() => onTogglePathSegment(value)}
+                  >
+                    <span className="break-all">{value}</span>
+                    <span aria-hidden="true" className="ml-1 text-amber-400">×</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
         <MaskingRuleInput
           label="URL query名"
           value={draft.queryNamesText}
@@ -289,18 +342,20 @@ const MaskingRuleInput = ({
   value,
   placeholder,
   disabled,
+  rows = 3,
   onChange
 }: {
   label: string;
   value: string;
   placeholder: string;
   disabled: boolean;
+  rows?: number;
   onChange: (value: string) => void;
 }) => (
   <label className="space-y-1.5 text-xs text-slate-300">
     <span className="font-medium">{label}</span>
     <textarea
-      rows={3}
+      rows={rows}
       value={value}
       placeholder={placeholder}
       disabled={disabled}
@@ -318,6 +373,7 @@ const MaskingReport = ({ report }: { report: ApiLogExportMaskingReport }) => {
         ['認証情報を除去', report.urlUserInfoRemoved],
         ['不正URLを非公開化', report.invalidUrlsRedacted],
         ['fragmentを伏字化', report.urlFragmentsRedacted],
+        ['追加path segmentを伏字化', report.custom.pathSegmentsRedacted],
         ['自動判定queryを伏字化', report.sensitiveQueryValuesRedacted],
         ['追加queryを伏字化', report.custom.queryValuesRedacted]
       ]
@@ -364,27 +420,65 @@ const MaskingReport = ({ report }: { report: ApiLogExportMaskingReport }) => {
   );
 };
 
-const PreviewEntryList = ({ entries }: { entries: ApiLogExportPreviewEntry[] }) => {
+const PreviewEntryList = ({
+  entries,
+  selectedPathSegmentValues,
+  disabled,
+  onTogglePathSegment
+}: {
+  entries: ApiLogExportPreviewEntry[];
+  selectedPathSegmentValues: string[];
+  disabled: boolean;
+  onTogglePathSegment: (value: string) => void;
+}) => {
   if (entries.length === 0) {
     return <p className="text-xs text-slate-500">出力対象の通信はありません。</p>;
   }
 
   return (
     <div className="space-y-1">
-      {entries.map((entry) => (
-        <div key={entry.id} className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
-          <div className="grid grid-cols-[48px_42px_minmax(0,1fr)] items-center gap-2 text-xs">
-            <span className="font-semibold text-slate-200">{entry.method}</span>
-            <span className={getStatusTone(entry.status)}>{entry.status ?? 'ERR'}</span>
-            <span className="truncate text-slate-300" title={entry.url}>{entry.url}</span>
+      {entries.map((entry) => {
+        const pathSegments = extractApiLogExportSelectablePathSegments(entry.url);
+        return (
+          <div key={entry.id} className="space-y-2 rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
+            <div className="grid grid-cols-[48px_42px_minmax(0,1fr)] items-center gap-2 text-xs">
+              <span className="font-semibold text-slate-200">{entry.method}</span>
+              <span className={getStatusTone(entry.status)}>{entry.status ?? 'ERR'}</span>
+              <span className="truncate text-slate-300" title={entry.url}>{entry.url}</span>
+            </div>
+            {pathSegments.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-1.5" aria-label={`${entry.method}通信のpath segment`}>
+                <span className="mr-1 text-[10px] text-slate-600">path</span>
+                {pathSegments.map((value) => {
+                  const isSelected = selectedPathSegmentValues.includes(value);
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      disabled={disabled}
+                      aria-pressed={isSelected}
+                      title={isSelected ? '追加マスキングから解除' : '追加マスキングへ選択'}
+                      className={`max-w-full rounded px-2 py-1 text-[10px] transition-colors disabled:opacity-50 ${
+                        isSelected
+                          ? 'border border-amber-600/70 bg-amber-500/20 text-amber-200'
+                          : 'border border-slate-700 bg-slate-900 text-slate-400 hover:border-indigo-600 hover:text-indigo-200'
+                      }`}
+                      onClick={() => onTogglePathSegment(value)}
+                    >
+                      <span className="break-all">{value}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+            <p className="text-[10px] leading-4 text-slate-500">
+              Request body: {bodyStateLabels[entry.requestBodyState]} / Response body: {bodyStateLabels[entry.responseBodyState]}
+              {' · '}headers自動伏字 {entry.requestHeaderValuesRedacted + entry.responseHeaderValuesRedacted}件
+              {' · '}body自動伏字 {entry.requestBodyFieldsRedacted + entry.responseBodyFieldsRedacted}件
+            </p>
           </div>
-          <p className="mt-1 text-[10px] leading-4 text-slate-500">
-            Request body: {bodyStateLabels[entry.requestBodyState]} / Response body: {bodyStateLabels[entry.responseBodyState]}
-            {' · '}headers自動伏字 {entry.requestHeaderValuesRedacted + entry.responseHeaderValuesRedacted}件
-            {' · '}body自動伏字 {entry.requestBodyFieldsRedacted + entry.responseBodyFieldsRedacted}件
-          </p>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };
@@ -396,8 +490,11 @@ const PreviewMetric = ({ label, value }: { label: string; value: string }) => (
   </div>
 );
 
+const splitDraftValues = (value: string): string[] =>
+  value.split(/[\n,]+/).map((item) => item.trim()).filter(Boolean);
+
 const countRules = (rules: ApiLogExportCustomMaskingRules): number =>
-  rules.queryNames.length + rules.headerNames.length + rules.bodyFieldNames.length;
+  rules.pathSegmentValues.length + rules.queryNames.length + rules.headerNames.length + rules.bodyFieldNames.length;
 
 const formatFileSize = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} B`;
