@@ -8,12 +8,17 @@ import { ApiLogExportService } from '../services/apiLogExportService';
 import { MobileInspectorServer } from '../services/mobileInspectorServer';
 import type { RiskConfirmationRequest } from '../../../shared/domain/risk';
 
+export interface RegisterHandlersOptions {
+  disableBrowserNavigation?: boolean;
+}
+
 export const registerHandlers = (
   mainWindow: BrowserWindow,
   workspaceService: WorkspaceService,
   browserViewManager: BrowserViewManager,
   apiLogService: ApiLogService,
-  mobileInspectorServer: MobileInspectorServer
+  mobileInspectorServer: MobileInspectorServer,
+  options: RegisterHandlersOptions = {}
 ): void => {
   const pendingRiskConfirmations = new Map<string, (allow: boolean) => void>();
   const apiLogExportService = new ApiLogExportService(mainWindow, workspaceService, apiLogService);
@@ -66,11 +71,13 @@ export const registerHandlers = (
   });
 
   ipcMain.handle(CHANNELS.browserNavigate, async (_event, workspace: Workspace, tabId: string, url: string) => {
+    if (options.disableBrowserNavigation) return true;
     browserViewManager.openTab(mainWindow, workspace, tabId, url);
     return true;
   });
 
   ipcMain.handle(CHANNELS.browserOpenDevTools, () => {
+    if (options.disableBrowserNavigation) return false;
     browserViewManager.openDevTools();
     return true;
   });
