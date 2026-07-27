@@ -1,4 +1,4 @@
-import type { Session, Workspace } from 'electron';
+import type { Session } from 'electron';
 import type { Workspace as StackpilotWorkspace } from '../../../shared/contracts';
 import type { SessionSnapshot } from '../../../shared/domain/sessionRestore';
 import { ApiLogService } from '../services/apiLogService';
