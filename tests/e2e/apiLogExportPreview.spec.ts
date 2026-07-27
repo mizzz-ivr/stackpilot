@@ -17,7 +17,7 @@ test('path segmentを再プレビューへ反映し、確認済み成果物を�
 
   const dialog = appWindow.getByRole('dialog', { name: '保存前プレビュー' });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText(fixtureUrl)).toBeVisible();
+  await expect(dialog.getByText(fixtureUrl, { exact: true })).toBeVisible();
 
   const sha256Value = dialog.getByText('SHA-256').locator('..').locator('p').nth(1);
   await expect(sha256Value).toHaveText(/^[a-f0-9]{64}$/);
