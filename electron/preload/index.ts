@@ -1,8 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { ApiLogEntry, AppSnapshot, CreateWorkspaceInput, Workspace } from '../../shared/contracts';
-import type { ApiLogExportRequest } from '../../shared/domain/apiLogExport';
 import type {
   ApiLogExportDiscardRequest,
+  ApiLogExportPreviewRequest,
   ApiLogExportPreviewResult,
   ApiLogExportSaveRequest,
   ApiLogExportSaveResult
@@ -30,7 +30,7 @@ const api = {
   },
   apiLog: {
     list: (workspaceId: string): Promise<ApiLogEntry[]> => ipcRenderer.invoke(CHANNELS.apiLogList, workspaceId),
-    previewExport: (request: ApiLogExportRequest): Promise<ApiLogExportPreviewResult> =>
+    previewExport: (request: ApiLogExportPreviewRequest): Promise<ApiLogExportPreviewResult> =>
       ipcRenderer.invoke(CHANNELS.apiLogExportPreview, request),
     saveExport: (request: ApiLogExportSaveRequest): Promise<ApiLogExportSaveResult> =>
       ipcRenderer.invoke(CHANNELS.apiLogExportSave, request),
