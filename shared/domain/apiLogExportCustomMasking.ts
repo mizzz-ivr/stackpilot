@@ -3,14 +3,18 @@ import { normalizeRequestBodyContentType } from './requestBody';
 
 export const maxApiLogExportCustomRulesPerCategory = 20;
 export const maxApiLogExportCustomRuleLength = 64;
+export const maxApiLogExportPathSegmentLength = 256;
+export const apiLogExportRedactedPathSegment = '<redacted-path>';
 
 export interface ApiLogExportCustomMaskingRules {
+  pathSegmentValues: string[];
   queryNames: string[];
   headerNames: string[];
   bodyFieldNames: string[];
 }
 
 export interface ApiLogExportCustomMaskingReport {
+  pathSegmentsRedacted: number;
   queryValuesRedacted: number;
   requestHeaderValuesRedacted: number;
   responseHeaderValuesRedacted: number;
@@ -22,6 +26,12 @@ export type ApiLogExportCustomRuleParseResult =
   | { status: 'valid'; rules: ApiLogExportCustomMaskingRules }
   | { status: 'invalid'; errorMessage: string };
 
+export interface ApiLogExportUrlMaskingResult {
+  value: string;
+  pathSegmentsRedacted: number;
+  queryValuesRedacted: number;
+}
+
 type MaskingSide = 'request' | 'response';
 type MaskingSummary = { redactedCount: number; redactedPaths: string[] };
 
@@ -29,12 +39,14 @@ const redactedValue = '<redacted>';
 const urlHeaderNames = new Set(['location', 'content-location', 'referer', 'referrer']);
 
 export const emptyApiLogExportCustomMaskingRules = (): ApiLogExportCustomMaskingRules => ({
+  pathSegmentValues: [],
   queryNames: [],
   headerNames: [],
   bodyFieldNames: []
 });
 
 export const createEmptyApiLogExportCustomMaskingReport = (): ApiLogExportCustomMaskingReport => ({
+  pathSegmentsRedacted: 0,
   queryValuesRedacted: 0,
   requestHeaderValuesRedacted: 0,
   responseHeaderValuesRedacted: 0,
@@ -45,21 +57,33 @@ export const createEmptyApiLogExportCustomMaskingReport = (): ApiLogExportCustom
 export const normalizeApiLogExportCustomRuleName = (value: string): string =>
   value.normalize('NFKC').trim().toLocaleLowerCase('en-US').replace(/[\s_-]+/g, '');
 
+export const normalizeApiLogExportPathSegmentValue = (value: string): string =>
+  value.normalize('NFKC').trim();
+
 export const isApiLogExportCustomMaskingRules = (value: unknown): value is ApiLogExportCustomMaskingRules => {
   if (!isRecord(value)) return false;
-  if (!isRuleList(value.queryNames) || !isRuleList(value.headerNames) || !isRuleList(value.bodyFieldNames)) {
+  if (
+    !isRuleList(value.pathSegmentValues) ||
+    !isRuleList(value.queryNames) ||
+    !isRuleList(value.headerNames) ||
+    !isRuleList(value.bodyFieldNames)
+  ) {
     return false;
   }
-  return !findInvalidCategory({
+
+  const rules: ApiLogExportCustomMaskingRules = {
+    pathSegmentValues: value.pathSegmentValues,
     queryNames: value.queryNames,
     headerNames: value.headerNames,
     bodyFieldNames: value.bodyFieldNames
-  });
+  };
+  return !findInvalidFieldCategory(rules) && !findInvalidPathSegmentCategory(rules.pathSegmentValues);
 };
 
 export const normalizeApiLogExportCustomMaskingRules = (
   rules?: ApiLogExportCustomMaskingRules
 ): ApiLogExportCustomMaskingRules => ({
+  pathSegmentValues: normalizePathSegmentList(rules?.pathSegmentValues ?? []),
   queryNames: normalizeRuleList(rules?.queryNames ?? []),
   headerNames: normalizeRuleList(rules?.headerNames ?? []),
   bodyFieldNames: normalizeRuleList(rules?.bodyFieldNames ?? [])
@@ -67,20 +91,28 @@ export const normalizeApiLogExportCustomMaskingRules = (
 
 export const hasApiLogExportCustomMaskingRules = (rules?: ApiLogExportCustomMaskingRules): boolean => {
   const normalized = normalizeApiLogExportCustomMaskingRules(rules);
-  return normalized.queryNames.length + normalized.headerNames.length + normalized.bodyFieldNames.length > 0;
+  return (
+    normalized.pathSegmentValues.length +
+      normalized.queryNames.length +
+      normalized.headerNames.length +
+      normalized.bodyFieldNames.length >
+    0
+  );
 };
 
 export const parseApiLogExportCustomMaskingRuleText = (input: {
+  pathSegmentValuesText: string;
   queryNamesText: string;
   headerNamesText: string;
   bodyFieldNamesText: string;
 }): ApiLogExportCustomRuleParseResult => {
   const rules: ApiLogExportCustomMaskingRules = {
+    pathSegmentValues: splitRuleText(input.pathSegmentValuesText),
     queryNames: splitRuleText(input.queryNamesText),
     headerNames: splitRuleText(input.headerNamesText),
     bodyFieldNames: splitRuleText(input.bodyFieldNamesText)
   };
-  const errorMessage = findInvalidCategory(rules);
+  const errorMessage = findInvalidPathSegmentCategory(rules.pathSegmentValues) ?? findInvalidFieldCategory(rules);
   return errorMessage
     ? { status: 'invalid', errorMessage }
     : { status: 'valid', rules: normalizeApiLogExportCustomMaskingRules(rules) };
@@ -89,6 +121,82 @@ export const parseApiLogExportCustomMaskingRuleText = (input: {
 export const matchesApiLogExportCustomRule = (name: string, rules: string[]): boolean => {
   const normalized = normalizeApiLogExportCustomRuleName(name);
   return normalized.length > 0 && rules.some((rule) => normalizeApiLogExportCustomRuleName(rule) === normalized);
+};
+
+export const matchesApiLogExportPathSegment = (value: string, rules: string[]): boolean => {
+  const normalized = normalizeApiLogExportPathSegmentValue(value);
+  return normalized.length > 0 && rules.some((rule) => normalizeApiLogExportPathSegmentValue(rule) === normalized);
+};
+
+export const extractApiLogExportSelectablePathSegments = (value: string): string[] => {
+  try {
+    const url = new URL(value);
+    const seen = new Set<string>();
+    const segments: string[] = [];
+    for (const encodedSegment of url.pathname.split('/')) {
+      if (!encodedSegment) continue;
+      const decoded = safeDecodePathSegment(encodedSegment);
+      if (!decoded) continue;
+      const normalized = normalizeApiLogExportPathSegmentValue(decoded);
+      if (!normalized || normalized === '.' || normalized === '..' || normalized === apiLogExportRedactedPathSegment) {
+        continue;
+      }
+      if (!seen.has(normalized)) {
+        seen.add(normalized);
+        segments.push(normalized);
+      }
+    }
+    return segments;
+  } catch {
+    return [];
+  }
+};
+
+export const applyApiLogExportCustomMaskingToUrl = (
+  value: string,
+  inputRules?: ApiLogExportCustomMaskingRules
+): ApiLogExportUrlMaskingResult => {
+  const rules = normalizeApiLogExportCustomMaskingRules(inputRules);
+  if (rules.pathSegmentValues.length === 0 && rules.queryNames.length === 0) {
+    return { value, pathSegmentsRedacted: 0, queryValuesRedacted: 0 };
+  }
+
+  try {
+    const url = new URL(value);
+    let pathSegmentsRedacted = 0;
+    let queryValuesRedacted = 0;
+
+    if (rules.pathSegmentValues.length > 0) {
+      const nextSegments = url.pathname.split('/').map((encodedSegment) => {
+        if (!encodedSegment) return encodedSegment;
+        const decoded = safeDecodePathSegment(encodedSegment);
+        if (
+          !decoded ||
+          decoded === apiLogExportRedactedPathSegment ||
+          !matchesApiLogExportPathSegment(decoded, rules.pathSegmentValues)
+        ) {
+          return encodedSegment;
+        }
+        pathSegmentsRedacted += 1;
+        return apiLogExportRedactedPathSegment;
+      });
+      url.pathname = nextSegments.join('/');
+    }
+
+    if (rules.queryNames.length > 0) {
+      const entries = [...url.searchParams.entries()];
+      url.search = '';
+      entries.forEach(([name, itemValue]) => {
+        const shouldMask = matchesApiLogExportCustomRule(name, rules.queryNames) && itemValue !== redactedValue;
+        url.searchParams.append(name, shouldMask ? redactedValue : itemValue);
+        if (shouldMask) queryValuesRedacted += 1;
+      });
+    }
+
+    return { value: url.toString(), pathSegmentsRedacted, queryValuesRedacted };
+  } catch {
+    return { value, pathSegmentsRedacted: 0, queryValuesRedacted: 0 };
+  }
 };
 
 export const applyApiLogExportCustomMasking = (
@@ -124,7 +232,7 @@ const applyToSafeJsonPayload = (
   const logs = Array.isArray(payload.logs) ? payload.logs : [];
   logs.forEach((value) => {
     if (!isRecord(value)) return;
-    maskUrlProperty(value, 'url', rules.queryNames, report);
+    maskUrlProperty(value, 'url', rules, report);
     maskHeaderRecord(value.requestHeaders, rules, report, 'request');
     maskHeaderRecord(value.responseHeaders, rules, report, 'response');
     maskBodyRecord(value.requestBody, rules.bodyFieldNames, report, 'request');
@@ -151,7 +259,7 @@ const applyToHarPayload = (
     const response = isRecord(value.response) ? value.response : undefined;
 
     if (request) {
-      maskUrlProperty(request, 'url', rules.queryNames, report);
+      maskUrlProperty(request, 'url', rules, report);
       maskHarQueryString(request.queryString, rules.queryNames);
       maskHeaderArray(request.headers, rules, report, 'request');
       if (isRecord(request.postData)) {
@@ -168,7 +276,7 @@ const applyToHarPayload = (
 
     if (response) {
       maskHeaderArray(response.headers, rules, report, 'response');
-      maskUrlProperty(response, 'redirectURL', rules.queryNames, report);
+      maskUrlProperty(response, 'redirectURL', rules, report);
       if (isRecord(response.content)) {
         maskTextBody(
           response.content,
@@ -193,31 +301,15 @@ const applyToHarPayload = (
 const maskUrlProperty = (
   record: Record<string, unknown>,
   property: string,
-  queryRules: string[],
+  rules: ApiLogExportCustomMaskingRules,
   report: ApiLogExportCustomMaskingReport
 ): void => {
   const value = record[property];
-  if (typeof value !== 'string' || queryRules.length === 0) return;
-  const result = maskUrlQueryValues(value, queryRules);
+  if (typeof value !== 'string') return;
+  const result = applyApiLogExportCustomMaskingToUrl(value, rules);
   record[property] = result.value;
-  report.queryValuesRedacted += result.redactedCount;
-};
-
-const maskUrlQueryValues = (value: string, queryRules: string[]): { value: string; redactedCount: number } => {
-  try {
-    const url = new URL(value);
-    const entries = [...url.searchParams.entries()];
-    let redactedCount = 0;
-    url.search = '';
-    entries.forEach(([name, itemValue]) => {
-      const shouldMask = matchesApiLogExportCustomRule(name, queryRules) && itemValue !== redactedValue;
-      url.searchParams.append(name, shouldMask ? redactedValue : itemValue);
-      if (shouldMask) redactedCount += 1;
-    });
-    return { value: url.toString(), redactedCount };
-  } catch {
-    return { value, redactedCount: 0 };
-  }
+  report.pathSegmentsRedacted += result.pathSegmentsRedacted;
+  report.queryValuesRedacted += result.queryValuesRedacted;
 };
 
 const maskHarQueryString = (value: unknown, queryRules: string[]): void => {
@@ -241,9 +333,10 @@ const maskHeaderRecord = (
       value[name] = redactedValue;
       incrementHeaderReport(report, side);
     } else if (urlHeaderNames.has(name.trim().toLowerCase())) {
-      const masked = maskUrlQueryValues(headerValue, rules.queryNames);
+      const masked = applyApiLogExportCustomMaskingToUrl(headerValue, rules);
       value[name] = masked.value;
-      report.queryValuesRedacted += masked.redactedCount;
+      report.pathSegmentsRedacted += masked.pathSegmentsRedacted;
+      report.queryValuesRedacted += masked.queryValuesRedacted;
     }
   });
 };
@@ -261,9 +354,10 @@ const maskHeaderArray = (
       entry.value = redactedValue;
       incrementHeaderReport(report, side);
     } else if (urlHeaderNames.has(entry.name.trim().toLowerCase())) {
-      const masked = maskUrlQueryValues(entry.value, rules.queryNames);
+      const masked = applyApiLogExportCustomMaskingToUrl(entry.value, rules);
       entry.value = masked.value;
-      report.queryValuesRedacted += masked.redactedCount;
+      report.pathSegmentsRedacted += masked.pathSegmentsRedacted;
+      report.queryValuesRedacted += masked.queryValuesRedacted;
     }
   });
 };
@@ -375,6 +469,7 @@ const incrementBodyReport = (
 };
 
 const toRuleCounts = (rules: ApiLogExportCustomMaskingRules): Record<string, number> => ({
+  pathSegmentValues: rules.pathSegmentValues.length,
   queryNames: rules.queryNames.length,
   headerNames: rules.headerNames.length,
   bodyFieldNames: rules.bodyFieldNames.length
@@ -383,7 +478,7 @@ const toRuleCounts = (rules: ApiLogExportCustomMaskingRules): Record<string, num
 const splitRuleText = (value: string): string[] =>
   value.split(/[\n,]+/).map((item) => item.trim()).filter(Boolean);
 
-const findInvalidCategory = (rules: ApiLogExportCustomMaskingRules): string | undefined => {
+const findInvalidFieldCategory = (rules: ApiLogExportCustomMaskingRules): string | undefined => {
   const categories = [
     ['URL query', rules.queryNames],
     ['header', rules.headerNames],
@@ -411,11 +506,48 @@ const findInvalidCategory = (rules: ApiLogExportCustomMaskingRules): string | un
   return undefined;
 };
 
+const findInvalidPathSegmentCategory = (values: string[]): string | undefined => {
+  if (values.length > maxApiLogExportCustomRulesPerCategory) {
+    return `URL path segmentの追加ルールは最大${maxApiLogExportCustomRulesPerCategory}件です。`;
+  }
+
+  const normalized = new Set<string>();
+  for (const value of values) {
+    const key = normalizeApiLogExportPathSegmentValue(value);
+    if (key.length === 0 || key.length > maxApiLogExportPathSegmentLength) {
+      return `URL path segmentは1〜${maxApiLogExportPathSegmentLength}文字で入力してください。`;
+    }
+    if (/[\u0000-\u001f\u007f]/.test(value)) {
+      return 'URL path segmentに制御文字は使用できません。';
+    }
+    if (key === '.' || key === '..' || key === apiLogExportRedactedPathSegment) {
+      return 'URL path segmentとして予約値は指定できません。';
+    }
+    if (/[\\/]/.test(key)) {
+      return 'URL path segmentにはスラッシュまたはバックスラッシュを含められません。';
+    }
+    if (normalized.has(key)) return 'URL path segmentに重複した値があります。';
+    normalized.add(key);
+  }
+  return undefined;
+};
+
+const safeDecodePathSegment = (value: string): string | undefined => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return undefined;
+  }
+};
+
 const isRuleList = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string');
 
 const normalizeRuleList = (values: string[]): string[] =>
   values.map((value) => value.normalize('NFKC').trim());
+
+const normalizePathSegmentList = (values: string[]): string[] =>
+  values.map(normalizeApiLogExportPathSegmentValue);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
