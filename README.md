@@ -27,6 +27,26 @@ Expo Goで表示されたQRコードを読み込んで確認します。`EXPO_PU
 
 詳細は `apps/mobile/README.md` を参照してください。
 
+### Electron E2E
+
+保存前プレビューの重要操作はPlaywrightでElectronを起動して検証します。テストはbuild済みのrenderer・preload・main processを使用します。
+
+```bash
+pnpm build
+pnpm test:e2e
+```
+
+Linuxの画面なし環境ではXvfbを使用します。
+
+```bash
+pnpm build
+xvfb-run -a pnpm test:e2e
+```
+
+E2E実行時は専用の一時`userData`ディレクトリを作成し、固定Workspaceと固定APIログを初期化します。`STACKPILOT_E2E=1`はPlaywright fixtureからだけ設定され、通常起動のWorkspaceや設定には影響しません。native save dialogはOS依存を避けるためmain processで一時保存先へ置き換えます。
+
+失敗時は`test-results/e2e`へスクリーンショットとPlaywright traceを出力します。成功時は証跡ファイルを残しません。
+
 ## 安全化済みAPIログエクスポート
 
 DesktopのAPI Inspectorでは、現在のWorkspaceと`all` / `xhr` / `fetch`フィルターに一致するログを以下の形式で保存できます。
@@ -95,6 +115,7 @@ rendererからmain processへ渡すのは、プレビュー生成時のWorkspace
 - `pnpm dev`: renderer + Electron起動
 - `pnpm build`: Desktop renderer / Electronビルド
 - `pnpm test`: unit test（Vitest）
+- `pnpm test:e2e`: build済みElectronを使用した保存前プレビューE2E
 - `pnpm mobile`: Expo Inspector起動
 - `pnpm mobile:ios`: iOS向けExpo起動
 - `pnpm mobile:android`: Android向けExpo起動
@@ -107,7 +128,8 @@ rendererからmain processへ渡すのは、プレビュー生成時のWorkspace
 - `electron/`: Electron main / preload
 - `apps/mobile/`: iPhone / iPad向けInspector
 - `shared/`: Desktop / Mobile共有の契約・ドメイン
-- `tests/`: 共通ドメイン・Desktop向け単体テスト
+- `tests/unit/`: 共通ドメイン・Desktop向け単体テスト
+- `tests/e2e/`: Electron E2Eテストとfixture
 
 ## ドキュメント
 
