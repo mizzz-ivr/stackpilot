@@ -7,9 +7,32 @@ import type {
   ApiLogExportSaveRequest,
   ApiLogExportSaveResult
 } from '../../shared/domain/apiLogExportPreview';
-import { CHANNELS } from '../main/ipc/channels';
 import type { RiskConfirmationRequest } from '../../shared/domain/risk';
 import type { MobilePairingServerStatus } from '../../shared/domain/mobilePairing';
+
+// sandbox preloadではローカルCommonJSモジュールをrequireできないため、
+// main process側のelectron/main/ipc/channels.tsと同じ公開channel名をここで固定する。
+const CHANNELS = {
+  workspaceList: 'workspace:list',
+  workspaceCreate: 'workspace:create',
+  workspaceUpdate: 'workspace:update',
+  workspaceDelete: 'workspace:delete',
+  workspacePersistTabs: 'workspace:persist-tabs',
+  workspaceSetActiveContext: 'workspace:set-active-context',
+  browserNavigate: 'browser:navigate',
+  browserOpenDevTools: 'browser:open-devtools',
+  apiLogList: 'api-log:list',
+  apiLogExportPreview: 'api-log:export-preview',
+  apiLogExportSave: 'api-log:export-save',
+  apiLogExportDiscard: 'api-log:export-discard',
+  apiLogReceived: 'api-log:received',
+  riskConfirmationRequested: 'risk:confirmation-requested',
+  riskConfirmationRespond: 'risk:confirmation-respond',
+  mobilePairingGetStatus: 'mobile-pairing:get-status',
+  mobilePairingStart: 'mobile-pairing:start',
+  mobilePairingStop: 'mobile-pairing:stop',
+  mobilePairingStatusChanged: 'mobile-pairing:status-changed'
+} as const;
 
 const api = {
   workspace: {
