@@ -47,6 +47,16 @@ E2E実行時は専用の一時`userData`ディレクトリを作成し、固定W
 
 失敗時は`test-results/e2e`へスクリーンショットとPlaywright traceを出力します。成功時は証跡ファイルを残しません。
 
+### IPC channel契約
+
+sandbox preloadではローカルCommonJSモジュールをruntimeで読み込めないため、IPC channelのobject literalはmain processとpreloadで個別に保持します。同期漏れを防ぐため、`shared/domain/ipcChannels.ts`の文字列literal型へ双方を`satisfies`させ、CIではTypeScript ASTを使って実際のキーと値も比較します。
+
+```bash
+pnpm check:ipc-channels
+```
+
+共有契約は`import type`でのみ参照されるため、preloadのbuild成果物へローカルmoduleのruntime `require`は追加されません。channelを追加・変更するときは、共有型、main process、preloadの3箇所を同じPRで更新してください。
+
 ## 安全化済みAPIログエクスポート
 
 DesktopのAPI Inspectorでは、現在のWorkspaceと`all` / `xhr` / `fetch`フィルターに一致するログを以下の形式で保存できます。
@@ -114,6 +124,7 @@ rendererからmain processへ渡すのは、プレビュー生成時のWorkspace
 
 - `pnpm dev`: renderer + Electron起動
 - `pnpm build`: Desktop renderer / Electronビルド
+- `pnpm check:ipc-channels`: main process / preloadのIPC channel契約チェック
 - `pnpm test`: unit test（Vitest）
 - `pnpm test:e2e`: build済みElectronを使用した保存前プレビューE2E
 - `pnpm mobile`: Expo Inspector起動

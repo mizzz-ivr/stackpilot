@@ -35,6 +35,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Check IPC channel contract
+        run: pnpm check:ipc-channels
+
       - name: Typecheck desktop
         run: pnpm typecheck
 

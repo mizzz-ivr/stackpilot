@@ -7,11 +7,12 @@ import type {
   ApiLogExportSaveRequest,
   ApiLogExportSaveResult
 } from '../../shared/domain/apiLogExportPreview';
+import type { StackpilotIpcChannels } from '../../shared/domain/ipcChannels';
 import type { RiskConfirmationRequest } from '../../shared/domain/risk';
 import type { MobilePairingServerStatus } from '../../shared/domain/mobilePairing';
 
 // sandbox preloadではローカルCommonJSモジュールをrequireできないため、
-// main process側のelectron/main/ipc/channels.tsと同じ公開channel名をここで固定する。
+// channel値はここで保持し、sharedの型契約とCIのAST比較でmain process側との同期を保証する。
 const CHANNELS = {
   workspaceList: 'workspace:list',
   workspaceCreate: 'workspace:create',
@@ -32,7 +33,7 @@ const CHANNELS = {
   mobilePairingStart: 'mobile-pairing:start',
   mobilePairingStop: 'mobile-pairing:stop',
   mobilePairingStatusChanged: 'mobile-pairing:status-changed'
-} as const;
+} as const satisfies StackpilotIpcChannels;
 
 const api = {
   workspace: {

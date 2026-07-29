@@ -1,3 +1,5 @@
+import type { StackpilotIpcChannels } from '../../../shared/domain/ipcChannels';
+
 export const CHANNELS = {
   workspaceList: 'workspace:list',
   workspaceCreate: 'workspace:create',
@@ -18,4 +20,4 @@ export const CHANNELS = {
   mobilePairingStart: 'mobile-pairing:start',
   mobilePairingStop: 'mobile-pairing:stop',
   mobilePairingStatusChanged: 'mobile-pairing:status-changed'
-} as const;
+} as const satisfies StackpilotIpcChannels;
