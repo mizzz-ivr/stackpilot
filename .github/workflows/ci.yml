@@ -41,6 +41,9 @@ jobs:
       - name: Check IPC channel usage coverage
         run: pnpm check:ipc-channel-usage
 
+      - name: Check critical IPC payload contracts
+        run: pnpm check:ipc-payloads
+
       - name: Typecheck desktop
         run: pnpm typecheck
 
