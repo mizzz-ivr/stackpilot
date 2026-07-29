@@ -17,6 +17,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test -c playwright.e2e.config.ts",
     "check:ipc-channels": "node scripts/check-ipc-channels.mjs && tsc -p tsconfig.ipc-channels.json --noEmit",
+    "check:ipc-channel-usage": "node scripts/check-ipc-channel-usage.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "lint": "eslint .",
     "package": "pnpm build && electron-builder",
