@@ -80,6 +80,37 @@ pnpm check:ipc-channel-usage
 
 channel追加時は、共有の文字列literal型・利用種別・main実装・preload実装を同じPRで更新し、`pnpm check:ipc-channels`と`pnpm check:ipc-channel-usage`の両方を実行してください。
 
+### 重要IPC payload契約
+
+`shared/domain/ipcPayloads.ts`では、影響の大きいIPCから段階的にrequest・response・event payload型を共有しています。現在の対象は次の5 channelです。
+
+- `api-log:export-preview`
+- `api-log:export-save`
+- `api-log:export-discard`
+- `risk:confirmation-requested`
+- `risk:confirmation-respond`
+
+```bash
+pnpm check:ipc-payloads
+```
+
+対象channelはchannel文字列をキーに、invoke引数tuple・戻り値・event payloadを定義します。main processのhandler、sandbox preloadのinvoke / subscribe、rendererの`window.stackpilot`公開型は同じ共有契約から導出します。
+
+sandbox preloadは共有契約を`import type`でのみ参照します。runtimeのローカルmodule読み込みは追加しません。build済みpreloadの起動はElectron E2Eで確認します。
+
+共有payload型はcompile-timeの整合性を保証するものであり、信頼境界のruntime validationを置き換えません。APIログ保存requestは引き続きmain processの`ApiLogExportService`で`unknown`として受け取り、既存validatorで検証します。
+
+対象IPCの型を変更するときは、次を同じPRで確認してください。
+
+- `shared/domain/ipcPayloads.ts`のrequest / result / event payload
+- main processの型付きhandler
+- preloadのinvokeまたはsubscribe
+- rendererの`window.stackpilot`公開型
+- `tests/types/criticalIpcPayloadContracts.ts`
+- `pnpm check:ipc-payloads`
+
+全IPCを一括移行せず、既存挙動を維持しながら影響の大きい経路から段階的に追加します。
+
 ## 安全化済みAPIログエクスポート
 
 DesktopのAPI Inspectorでは、現在のWorkspaceと`all` / `xhr` / `fetch`フィルターに一致するログを以下の形式で保存できます。
@@ -149,6 +180,7 @@ rendererからmain processへ渡すのは、プレビュー生成時のWorkspace
 - `pnpm build`: Desktop renderer / Electronビルド
 - `pnpm check:ipc-channels`: main process / preloadのIPC channel契約チェック
 - `pnpm check:ipc-channel-usage`: 定義済みIPC channelのmain / preload利用カバレッジチェック
+- `pnpm check:ipc-payloads`: APIログ保存・リスク確認IPCのpayload共有契約チェック
 - `pnpm test`: unit test（Vitest）
 - `pnpm test:e2e`: build済みElectronを使用した保存前プレビューE2E
 - `pnpm mobile`: Expo Inspector起動
@@ -164,6 +196,7 @@ rendererからmain processへ渡すのは、プレビュー生成時のWorkspace
 - `apps/mobile/`: iPhone / iPad向けInspector
 - `shared/`: Desktop / Mobile共有の契約・ドメイン
 - `tests/unit/`: 共通ドメイン・Desktop向け単体テスト
+- `tests/types/`: compile-time型契約テスト
 - `tests/e2e/`: Electron E2Eテストとfixture
 
 ## ドキュメント
