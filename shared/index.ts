@@ -4,6 +4,7 @@ export * from './domain/apiLogExportCustomMasking';
 export * from './domain/apiLogExportPreview';
 export * from './domain/environment';
 export * from './domain/inspector';
+export * from './domain/ipcPayloads';
 export * from './domain/mobileInspector';
 export * from './domain/mobileLogActions';
 export * from './domain/mobileLogFilters';
