@@ -2,6 +2,13 @@ import ts from 'typescript';
 
 const usageVariableName = 'stackpilotIpcChannelUsages';
 const allowedUsageModes = new Set(['invoke', 'event']);
+const operationNames = {
+  mainHandle: 'main-handle',
+  mainSend: 'main-send',
+  preloadInvoke: 'preload-invoke',
+  preloadOn: 'preload-on',
+  preloadRemoveListener: 'preload-remove-listener'
+};
 
 export const readIpcUsageContract = (
   sourceText,
@@ -11,21 +18,21 @@ export const readIpcUsageContract = (
   const errors = [];
   let declaration;
 
-  const visit = (node) => {
+  walkSource(sourceFile, (node) => {
     if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === usageVariableName
+      !ts.isVariableDeclaration(node) ||
+      !ts.isIdentifier(node.name) ||
+      node.name.text !== usageVariableName
     ) {
-      if (declaration) {
-        errors.push(`${filePath}: ${usageVariableName}の定義が複数あります。`);
-      } else {
-        declaration = node;
-      }
+      return;
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
+
+    if (declaration) {
+      errors.push(`${filePath}: ${usageVariableName}の定義が複数あります。`);
+    } else {
+      declaration = node;
+    }
+  });
 
   if (!declaration?.initializer) {
     return {
@@ -78,36 +85,41 @@ export const analyzeIpcUsageSource = ({ sourceText, filePath, side }) => {
   const usages = [];
   const errors = [];
 
-  const visit = (node) => {
-    if (ts.isCallExpression(node)) {
-      const operation = classifyIpcOperation(node.expression, side);
-      if (operation) {
-        const location = formatLocation(sourceFile, node);
-        if (operation.startsWith('unsupported:')) {
-          errors.push(`${location}: 未対応のIPC API「${operation.slice('unsupported:'.length)}」を使用しています。`);
-        } else {
-          const channelReference = readChannelReference(node.arguments[0]);
-          if (channelReference.kind === 'channel') {
-            usages.push({
-              key: channelReference.key,
-              operation,
-              filePath,
-              line: location.line,
-              column: location.column
-            });
-          } else if (channelReference.kind === 'direct-string') {
-            errors.push(
-              `${location.text}: IPC channel「${channelReference.value}」を直接文字列で指定せずCHANNELSを使用してください。`
-            );
-          } else {
-            errors.push(`${location.text}: IPC APIの第1引数はCHANNELS.<key>で指定してください。`);
-          }
-        }
-      }
+  walkSource(sourceFile, (node) => {
+    if (!ts.isCallExpression(node)) return;
+
+    const operation = classifyIpcOperation(node.expression, side);
+    if (!operation) return;
+
+    const location = formatLocation(sourceFile, node);
+    if (operation.startsWith('unsupported:')) {
+      errors.push(
+        `${location.text}: 未対応のIPC API「${operation.slice('unsupported:'.length)}」を使用しています。`
+      );
+      return;
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
+
+    const channelReference = readChannelReference(node.arguments[0]);
+    if (channelReference.kind === 'channel') {
+      usages.push({
+        key: channelReference.key,
+        operation,
+        filePath,
+        line: location.line,
+        column: location.column
+      });
+      return;
+    }
+
+    if (channelReference.kind === 'direct-string') {
+      errors.push(
+        `${location.text}: IPC channel「${channelReference.value}」を直接文字列で指定せずCHANNELSを使用してください。`
+      );
+      return;
+    }
+
+    errors.push(`${location.text}: IPC APIの第1引数はCHANNELS.<key>で指定してください。`);
+  });
 
   return { usages, errors };
 };
@@ -139,38 +151,9 @@ export const validateIpcUsageCoverage = ({ modes, mainResults, preloadResults })
     const counts = countOperations(channelUsages);
 
     if (mode === 'invoke') {
-      if (counts['main-handle'] !== 1) {
-        errors.push(
-          `channel「${key}」はinvokeのためipcMain.handleが1件必要です（検出: ${counts['main-handle']}件）。`
-        );
-      }
-      if (counts['preload-invoke'] < 1) {
-        errors.push(`channel「${key}」はinvokeのためipcRenderer.invokeが必要です。`);
-      }
-      reportForbiddenOperations(
-        errors,
-        channelUsages,
-        new Set(['main-send', 'preload-on', 'preload-remove-listener']),
-        'invoke'
-      );
+      validateInvokeChannel(errors, key, channelUsages, counts);
     } else {
-      if (counts['main-send'] < 1) {
-        errors.push(`channel「${key}」はeventのためwebContents.sendが必要です。`);
-      }
-      if (counts['preload-on'] < 1) {
-        errors.push(`channel「${key}」はeventのためipcRenderer.onが必要です。`);
-      }
-      if (counts['preload-on'] !== counts['preload-remove-listener']) {
-        errors.push(
-          `channel「${key}」の購読数と解除数が一致しません: on=${counts['preload-on']}, removeListener=${counts['preload-remove-listener']}`
-        );
-      }
-      reportForbiddenOperations(
-        errors,
-        channelUsages,
-        new Set(['main-handle', 'preload-invoke']),
-        'event'
-      );
+      validateEventChannel(errors, key, channelUsages, counts);
     }
   }
 
@@ -185,6 +168,49 @@ export const validateIpcUsageCoverage = ({ modes, mainResults, preloadResults })
   };
 };
 
+const validateInvokeChannel = (errors, key, usages, counts) => {
+  if (counts[operationNames.mainHandle] !== 1) {
+    errors.push(
+      `channel「${key}」はinvokeのためipcMain.handleが1件必要です（検出: ${counts[operationNames.mainHandle]}件）。`
+    );
+  }
+  if (counts[operationNames.preloadInvoke] < 1) {
+    errors.push(`channel「${key}」はinvokeのためipcRenderer.invokeが必要です。`);
+  }
+
+  reportForbiddenOperations(
+    errors,
+    usages,
+    new Set([
+      operationNames.mainSend,
+      operationNames.preloadOn,
+      operationNames.preloadRemoveListener
+    ]),
+    'invoke'
+  );
+};
+
+const validateEventChannel = (errors, key, usages, counts) => {
+  if (counts[operationNames.mainSend] < 1) {
+    errors.push(`channel「${key}」はeventのためwebContents.sendが必要です。`);
+  }
+  if (counts[operationNames.preloadOn] < 1) {
+    errors.push(`channel「${key}」はeventのためipcRenderer.onが必要です。`);
+  }
+  if (counts[operationNames.preloadOn] !== counts[operationNames.preloadRemoveListener]) {
+    errors.push(
+      `channel「${key}」の購読数と解除数が一致しません: on=${counts[operationNames.preloadOn]}, removeListener=${counts[operationNames.preloadRemoveListener]}`
+    );
+  }
+
+  reportForbiddenOperations(
+    errors,
+    usages,
+    new Set([operationNames.mainHandle, operationNames.preloadInvoke]),
+    'event'
+  );
+};
+
 const reportForbiddenOperations = (errors, usages, forbiddenOperations, expectedMode) => {
   for (const usage of usages) {
     if (!forbiddenOperations.has(usage.operation)) continue;
@@ -195,41 +221,37 @@ const reportForbiddenOperations = (errors, usages, forbiddenOperations, expected
 };
 
 const countOperations = (usages) => {
-  const counts = {
-    'main-handle': 0,
-    'main-send': 0,
-    'preload-invoke': 0,
-    'preload-on': 0,
-    'preload-remove-listener': 0
-  };
+  const counts = Object.fromEntries(Object.values(operationNames).map((operation) => [operation, 0]));
   for (const usage of usages) counts[usage.operation] += 1;
   return counts;
 };
 
 const classifyIpcOperation = (expression, side) => {
   if (!ts.isPropertyAccessExpression(expression)) return undefined;
+
   const method = expression.name.text;
   const receiver = expression.expression;
 
   if (side === 'main') {
     if (ts.isIdentifier(receiver) && receiver.text === 'ipcMain') {
-      if (method === 'handle') return 'main-handle';
+      if (method === 'handle') return operationNames.mainHandle;
       if (method === 'on' || method === 'once' || method === 'handleOnce') {
         return `unsupported:ipcMain.${method}`;
       }
     }
-    if (method === 'send' && isWebContentsReceiver(receiver)) return 'main-send';
+    if (method === 'send' && isWebContentsReceiver(receiver)) return operationNames.mainSend;
     return undefined;
   }
 
   if (side === 'preload' && ts.isIdentifier(receiver) && receiver.text === 'ipcRenderer') {
-    if (method === 'invoke') return 'preload-invoke';
-    if (method === 'on') return 'preload-on';
-    if (method === 'removeListener') return 'preload-remove-listener';
+    if (method === 'invoke') return operationNames.preloadInvoke;
+    if (method === 'on') return operationNames.preloadOn;
+    if (method === 'removeListener') return operationNames.preloadRemoveListener;
     if (['send', 'sendSync', 'once', 'removeAllListeners'].includes(method)) {
       return `unsupported:ipcRenderer.${method}`;
     }
   }
+
   return undefined;
 };
 
@@ -316,12 +338,17 @@ const createSourceFile = (filePath, sourceText) =>
     filePath.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
   );
 
+const walkSource = (sourceFile, visitor) => {
+  const visit = (node) => {
+    visitor(node);
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+};
+
 const formatLocation = (sourceFile, node) => {
   const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-  const location = {
-    line: line + 1,
-    column: character + 1
-  };
+  const location = { line: line + 1, column: character + 1 };
   return {
     ...location,
     text: `${sourceFile.fileName}:${location.line}:${location.column}`
