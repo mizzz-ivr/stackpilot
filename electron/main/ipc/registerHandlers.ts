@@ -1,12 +1,13 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import type { CreateWorkspaceInput, Workspace } from '../../../shared/contracts';
+import type { StackpilotIpcEventPayload } from '../../../shared/domain/ipcPayloads';
 import { CHANNELS } from './channels';
+import { createTypedIpcHandler } from './typedIpc';
 import { WorkspaceService } from '../services/workspaceService';
 import { BrowserViewManager } from '../services/browserViewManager';
 import { ApiLogService } from '../services/apiLogService';
 import { ApiLogExportService } from '../services/apiLogExportService';
 import { MobileInspectorServer } from '../services/mobileInspectorServer';
-import type { RiskConfirmationRequest } from '../../../shared/domain/risk';
 
 export interface RegisterHandlersOptions {
   disableBrowserNavigation?: boolean;
@@ -23,28 +24,36 @@ export const registerHandlers = (
   const pendingRiskConfirmations = new Map<string, (allow: boolean) => void>();
   const apiLogExportService = new ApiLogExportService(mainWindow, workspaceService, apiLogService);
 
-  apiLogService.setConfirmRiskHandler((request: RiskConfirmationRequest) => {
-    if (mainWindow.isDestroyed()) return Promise.resolve(false);
+  apiLogService.setConfirmRiskHandler(
+    (request: StackpilotIpcEventPayload<typeof CHANNELS.riskConfirmationRequested>) => {
+      if (mainWindow.isDestroyed()) return Promise.resolve(false);
 
-    return new Promise<boolean>((resolve) => {
-      pendingRiskConfirmations.set(request.confirmationId, resolve);
-      mainWindow.webContents.send(CHANNELS.riskConfirmationRequested, request);
-      setTimeout(() => {
-        const resolver = pendingRiskConfirmations.get(request.confirmationId);
-        if (!resolver) return;
-        pendingRiskConfirmations.delete(request.confirmationId);
-        resolver(false);
-      }, 30_000);
-    });
-  });
+      return new Promise<boolean>((resolve) => {
+        pendingRiskConfirmations.set(request.confirmationId, resolve);
+        mainWindow.webContents.send(CHANNELS.riskConfirmationRequested, request);
+        setTimeout(() => {
+          const resolver = pendingRiskConfirmations.get(request.confirmationId);
+          if (!resolver) return;
+          pendingRiskConfirmations.delete(request.confirmationId);
+          resolver(false);
+        }, 30_000);
+      });
+    }
+  );
 
-  ipcMain.handle(CHANNELS.riskConfirmationRespond, (_event, confirmationId: string, allow: boolean) => {
-    const resolver = pendingRiskConfirmations.get(confirmationId);
-    if (!resolver) return false;
-    pendingRiskConfirmations.delete(confirmationId);
-    resolver(Boolean(allow));
-    return true;
-  });
+  ipcMain.handle(
+    CHANNELS.riskConfirmationRespond,
+    createTypedIpcHandler(
+      CHANNELS.riskConfirmationRespond,
+      (confirmationId, allow) => {
+        const resolver = pendingRiskConfirmations.get(confirmationId);
+        if (!resolver) return false;
+        pendingRiskConfirmations.delete(confirmationId);
+        resolver(Boolean(allow));
+        return true;
+      }
+    )
+  );
 
   ipcMain.handle(CHANNELS.workspaceList, () => workspaceService.getSnapshot());
 
@@ -83,9 +92,18 @@ export const registerHandlers = (
   });
 
   ipcMain.handle(CHANNELS.apiLogList, (_event, workspaceId: string) => apiLogService.list(workspaceId));
-  ipcMain.handle(CHANNELS.apiLogExportPreview, (_event, request: unknown) => apiLogExportService.preview(request));
-  ipcMain.handle(CHANNELS.apiLogExportSave, (_event, request: unknown) => apiLogExportService.save(request));
-  ipcMain.handle(CHANNELS.apiLogExportDiscard, (_event, request: unknown) => apiLogExportService.discard(request));
+  ipcMain.handle(
+    CHANNELS.apiLogExportPreview,
+    createTypedIpcHandler(CHANNELS.apiLogExportPreview, (request) => apiLogExportService.preview(request))
+  );
+  ipcMain.handle(
+    CHANNELS.apiLogExportSave,
+    createTypedIpcHandler(CHANNELS.apiLogExportSave, (request) => apiLogExportService.save(request))
+  );
+  ipcMain.handle(
+    CHANNELS.apiLogExportDiscard,
+    createTypedIpcHandler(CHANNELS.apiLogExportDiscard, (request) => apiLogExportService.discard(request))
+  );
 
   ipcMain.handle(CHANNELS.mobilePairingGetStatus, () => mobileInspectorServer.getStatus());
   ipcMain.handle(CHANNELS.mobilePairingStart, () => mobileInspectorServer.start());
