@@ -21,3 +21,29 @@ export type StackpilotIpcChannels = {
   readonly mobilePairingStop: 'mobile-pairing:stop';
   readonly mobilePairingStatusChanged: 'mobile-pairing:status-changed';
 };
+
+export type StackpilotIpcChannelUsage = 'invoke' | 'event';
+
+// CIはこの定義をsource ASTとして読み取り、main/preloadの実利用と照合する。
+// preloadからruntime importしないこと。
+export const stackpilotIpcChannelUsages = {
+  workspaceList: 'invoke',
+  workspaceCreate: 'invoke',
+  workspaceUpdate: 'invoke',
+  workspaceDelete: 'invoke',
+  workspacePersistTabs: 'invoke',
+  workspaceSetActiveContext: 'invoke',
+  browserNavigate: 'invoke',
+  browserOpenDevTools: 'invoke',
+  apiLogList: 'invoke',
+  apiLogExportPreview: 'invoke',
+  apiLogExportSave: 'invoke',
+  apiLogExportDiscard: 'invoke',
+  apiLogReceived: 'event',
+  riskConfirmationRequested: 'event',
+  riskConfirmationRespond: 'invoke',
+  mobilePairingGetStatus: 'invoke',
+  mobilePairingStart: 'invoke',
+  mobilePairingStop: 'invoke',
+  mobilePairingStatusChanged: 'event'
+} as const satisfies Record<keyof StackpilotIpcChannels, StackpilotIpcChannelUsage>;
