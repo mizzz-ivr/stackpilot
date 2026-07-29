@@ -57,6 +57,29 @@ pnpm check:ipc-channels
 
 共有契約は`import type`でのみ参照されるため、preloadのbuild成果物へローカルmoduleのruntime `require`は追加されません。channelを追加・変更するときは、共有型、main process、preloadの3箇所を同じPRで更新してください。
 
+### IPC channel利用カバレッジ
+
+`shared/domain/ipcChannels.ts`では、各channelを`invoke`または`event`へ分類します。CIは`electron/main`と`electron/preload`配下をTypeScript ASTで走査し、channel定義だけが追加されて実処理が欠落する状態を検出します。
+
+```bash
+pnpm check:ipc-channel-usage
+```
+
+`invoke` channelでは次の両方が必要です。
+
+- main process: `ipcMain.handle(CHANNELS.<key>, ...)`
+- sandbox preload: `ipcRenderer.invoke(CHANNELS.<key>, ...)`
+
+`event` channelでは次の3つが必要です。
+
+- main process: `webContents.send(CHANNELS.<key>, ...)`
+- sandbox preload: `ipcRenderer.on(CHANNELS.<key>, ...)`
+- sandbox preload: 対応する`ipcRenderer.removeListener(CHANNELS.<key>, ...)`
+
+利用カバレッジチェックは、直接文字列指定、未定義channel、通信種別と逆方向の利用、同一channelのmain handler重複、購読解除漏れ、未対応のfire-and-forget IPC APIを失敗扱いにします。
+
+channel追加時は、共有の文字列literal型・利用種別・main実装・preload実装を同じPRで更新し、`pnpm check:ipc-channels`と`pnpm check:ipc-channel-usage`の両方を実行してください。
+
 ## 安全化済みAPIログエクスポート
 
 DesktopのAPI Inspectorでは、現在のWorkspaceと`all` / `xhr` / `fetch`フィルターに一致するログを以下の形式で保存できます。
@@ -125,6 +148,7 @@ rendererからmain processへ渡すのは、プレビュー生成時のWorkspace
 - `pnpm dev`: renderer + Electron起動
 - `pnpm build`: Desktop renderer / Electronビルド
 - `pnpm check:ipc-channels`: main process / preloadのIPC channel契約チェック
+- `pnpm check:ipc-channel-usage`: 定義済みIPC channelのmain / preload利用カバレッジチェック
 - `pnpm test`: unit test（Vitest）
 - `pnpm test:e2e`: build済みElectronを使用した保存前プレビューE2E
 - `pnpm mobile`: Expo Inspector起動
