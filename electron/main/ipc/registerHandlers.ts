@@ -105,15 +105,26 @@ export const registerHandlers = (
     createTypedIpcHandler(CHANNELS.apiLogExportDiscard, (request) => apiLogExportService.discard(request))
   );
 
-  ipcMain.handle(CHANNELS.mobilePairingGetStatus, () => mobileInspectorServer.getStatus());
-  ipcMain.handle(CHANNELS.mobilePairingStart, () => mobileInspectorServer.start());
-  ipcMain.handle(CHANNELS.mobilePairingStop, () => mobileInspectorServer.stop());
+  ipcMain.handle(
+    CHANNELS.mobilePairingGetStatus,
+    createTypedIpcHandler(CHANNELS.mobilePairingGetStatus, () => mobileInspectorServer.getStatus())
+  );
+  ipcMain.handle(
+    CHANNELS.mobilePairingStart,
+    createTypedIpcHandler(CHANNELS.mobilePairingStart, () => mobileInspectorServer.start())
+  );
+  ipcMain.handle(
+    CHANNELS.mobilePairingStop,
+    createTypedIpcHandler(CHANNELS.mobilePairingStop, () => mobileInspectorServer.stop())
+  );
 
-  mobileInspectorServer.onStatus((status) => {
-    if (!mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(CHANNELS.mobilePairingStatusChanged, status);
+  mobileInspectorServer.onStatus(
+    (status: StackpilotIpcEventPayload<typeof CHANNELS.mobilePairingStatusChanged>) => {
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(CHANNELS.mobilePairingStatusChanged, status);
+      }
     }
-  });
+  );
 
   apiLogService.onLog((entry) => {
     mainWindow.webContents.send(CHANNELS.apiLogReceived, entry);
