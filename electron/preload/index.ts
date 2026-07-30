@@ -40,6 +40,17 @@ const saveApiLogExport: StackpilotIpcInvokeMethod<typeof CHANNELS.apiLogExportSa
 const discardApiLogExport: StackpilotIpcInvokeMethod<typeof CHANNELS.apiLogExportDiscard> =
   (request) => ipcRenderer.invoke(CHANNELS.apiLogExportDiscard, request);
 
+const subscribeApiLog: StackpilotIpcEventSubscriber<
+  typeof CHANNELS.apiLogReceived
+> = (handler) => {
+  const listener = (
+    _event: Electron.IpcRendererEvent,
+    entry: StackpilotIpcEventPayload<typeof CHANNELS.apiLogReceived>
+  ) => handler(entry);
+  ipcRenderer.on(CHANNELS.apiLogReceived, listener);
+  return () => ipcRenderer.removeListener(CHANNELS.apiLogReceived, listener);
+};
+
 const getMobilePairingStatus: StackpilotIpcInvokeMethod<
   typeof CHANNELS.mobilePairingGetStatus
 > = () => ipcRenderer.invoke(CHANNELS.mobilePairingGetStatus);
@@ -101,11 +112,7 @@ const api = {
     previewExport: previewApiLogExport,
     saveExport: saveApiLogExport,
     discardExportPreview: discardApiLogExport,
-    subscribe: (handler: (entry: ApiLogEntry) => void): (() => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, entry: ApiLogEntry) => handler(entry);
-      ipcRenderer.on(CHANNELS.apiLogReceived, listener);
-      return () => ipcRenderer.removeListener(CHANNELS.apiLogReceived, listener);
-    }
+    subscribe: subscribeApiLog
   },
   mobilePairing: {
     getStatus: getMobilePairingStatus,
