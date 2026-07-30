@@ -126,7 +126,9 @@ export const registerHandlers = (
     }
   );
 
-  apiLogService.onLog((entry) => {
-    mainWindow.webContents.send(CHANNELS.apiLogReceived, entry);
-  });
+  apiLogService.onLog(
+    (entry: StackpilotIpcEventPayload<typeof CHANNELS.apiLogReceived>) => {
+      mainWindow.webContents.send(CHANNELS.apiLogReceived, entry);
+    }
+  );
 };
