@@ -4,7 +4,6 @@ import type {
   StackpilotIpcEventSubscriber,
   StackpilotIpcInvokeMethod
 } from '../shared/domain/ipcPayloads';
-import type { MobilePairingServerStatus } from '../shared/domain/mobilePairing';
 
 declare global {
   interface Window {
@@ -29,10 +28,10 @@ declare global {
         subscribe: (handler: (entry: ApiLogEntry) => void) => () => void;
       };
       mobilePairing: {
-        getStatus: () => Promise<MobilePairingServerStatus>;
-        start: () => Promise<MobilePairingServerStatus>;
-        stop: () => Promise<MobilePairingServerStatus>;
-        subscribe: (handler: (status: MobilePairingServerStatus) => void) => () => void;
+        getStatus: StackpilotIpcInvokeMethod<'mobile-pairing:get-status'>;
+        start: StackpilotIpcInvokeMethod<'mobile-pairing:start'>;
+        stop: StackpilotIpcInvokeMethod<'mobile-pairing:stop'>;
+        subscribe: StackpilotIpcEventSubscriber<'mobile-pairing:status-changed'>;
       };
       riskGuard: {
         subscribe: StackpilotIpcEventSubscriber<'risk:confirmation-requested'>;
