@@ -5,6 +5,7 @@ import type {
   ApiLogExportSaveRequest,
   ApiLogExportSaveResult
 } from './apiLogExportPreview';
+import type { ApiLogEntry } from '../contracts';
 import type { StackpilotIpcChannels } from './ipcChannels';
 import type { MobilePairingServerStatus } from './mobilePairing';
 import type { RiskConfirmationRequest } from './risk';
@@ -51,6 +52,7 @@ export type StackpilotCriticalIpcInvokeContract = DefineIpcInvokeContract<{
 }>;
 
 export type StackpilotCriticalIpcEventContract = DefineIpcEventContract<{
+  'api-log:received': IpcEventDefinition<ApiLogEntry>;
   'risk:confirmation-requested': IpcEventDefinition<RiskConfirmationRequest>;
   'mobile-pairing:status-changed': IpcEventDefinition<MobilePairingServerStatus>;
 }>;
