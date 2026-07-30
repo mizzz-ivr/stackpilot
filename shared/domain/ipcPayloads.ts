@@ -6,6 +6,7 @@ import type {
   ApiLogExportSaveResult
 } from './apiLogExportPreview';
 import type { StackpilotIpcChannels } from './ipcChannels';
+import type { MobilePairingServerStatus } from './mobilePairing';
 import type { RiskConfirmationRequest } from './risk';
 
 type StackpilotIpcChannelValue = StackpilotIpcChannels[keyof StackpilotIpcChannels];
@@ -44,10 +45,14 @@ export type StackpilotCriticalIpcInvokeContract = DefineIpcInvokeContract<{
     [confirmationId: string, allow: boolean],
     boolean
   >;
+  'mobile-pairing:get-status': IpcInvokeDefinition<[], MobilePairingServerStatus>;
+  'mobile-pairing:start': IpcInvokeDefinition<[], MobilePairingServerStatus>;
+  'mobile-pairing:stop': IpcInvokeDefinition<[], MobilePairingServerStatus>;
 }>;
 
 export type StackpilotCriticalIpcEventContract = DefineIpcEventContract<{
   'risk:confirmation-requested': IpcEventDefinition<RiskConfirmationRequest>;
+  'mobile-pairing:status-changed': IpcEventDefinition<MobilePairingServerStatus>;
 }>;
 
 export type StackpilotCriticalInvokeChannel = keyof StackpilotCriticalIpcInvokeContract;
