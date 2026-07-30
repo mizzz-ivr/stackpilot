@@ -1,14 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { ApiLogEntry, AppSnapshot, CreateWorkspaceInput, Workspace } from '../../shared/contracts';
-import type {
-  ApiLogExportDiscardRequest,
-  ApiLogExportPreviewRequest,
-  ApiLogExportPreviewResult,
-  ApiLogExportSaveRequest,
-  ApiLogExportSaveResult
-} from '../../shared/domain/apiLogExportPreview';
 import type { StackpilotIpcChannels } from '../../shared/domain/ipcChannels';
-import type { RiskConfirmationRequest } from '../../shared/domain/risk';
+import type {
+  StackpilotIpcEventPayload,
+  StackpilotIpcEventSubscriber,
+  StackpilotIpcInvokeMethod
+} from '../../shared/domain/ipcPayloads';
 import type { MobilePairingServerStatus } from '../../shared/domain/mobilePairing';
 
 // sandbox preloadではローカルCommonJSモジュールをrequireできないため、
@@ -35,6 +32,31 @@ const CHANNELS = {
   mobilePairingStatusChanged: 'mobile-pairing:status-changed'
 } as const satisfies StackpilotIpcChannels;
 
+const previewApiLogExport: StackpilotIpcInvokeMethod<typeof CHANNELS.apiLogExportPreview> =
+  (request) => ipcRenderer.invoke(CHANNELS.apiLogExportPreview, request);
+
+const saveApiLogExport: StackpilotIpcInvokeMethod<typeof CHANNELS.apiLogExportSave> =
+  (request) => ipcRenderer.invoke(CHANNELS.apiLogExportSave, request);
+
+const discardApiLogExport: StackpilotIpcInvokeMethod<typeof CHANNELS.apiLogExportDiscard> =
+  (request) => ipcRenderer.invoke(CHANNELS.apiLogExportDiscard, request);
+
+const subscribeRiskConfirmation: StackpilotIpcEventSubscriber<
+  typeof CHANNELS.riskConfirmationRequested
+> = (handler) => {
+  const listener = (
+    _event: Electron.IpcRendererEvent,
+    request: StackpilotIpcEventPayload<typeof CHANNELS.riskConfirmationRequested>
+  ) => handler(request);
+  ipcRenderer.on(CHANNELS.riskConfirmationRequested, listener);
+  return () => ipcRenderer.removeListener(CHANNELS.riskConfirmationRequested, listener);
+};
+
+const resolveRiskConfirmation: StackpilotIpcInvokeMethod<
+  typeof CHANNELS.riskConfirmationRespond
+> = (confirmationId, allow) =>
+  ipcRenderer.invoke(CHANNELS.riskConfirmationRespond, confirmationId, allow);
+
 const api = {
   workspace: {
     list: (): Promise<AppSnapshot> => ipcRenderer.invoke(CHANNELS.workspaceList),
@@ -54,12 +76,9 @@ const api = {
   },
   apiLog: {
     list: (workspaceId: string): Promise<ApiLogEntry[]> => ipcRenderer.invoke(CHANNELS.apiLogList, workspaceId),
-    previewExport: (request: ApiLogExportPreviewRequest): Promise<ApiLogExportPreviewResult> =>
-      ipcRenderer.invoke(CHANNELS.apiLogExportPreview, request),
-    saveExport: (request: ApiLogExportSaveRequest): Promise<ApiLogExportSaveResult> =>
-      ipcRenderer.invoke(CHANNELS.apiLogExportSave, request),
-    discardExportPreview: (request: ApiLogExportDiscardRequest): Promise<boolean> =>
-      ipcRenderer.invoke(CHANNELS.apiLogExportDiscard, request),
+    previewExport: previewApiLogExport,
+    saveExport: saveApiLogExport,
+    discardExportPreview: discardApiLogExport,
     subscribe: (handler: (entry: ApiLogEntry) => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent, entry: ApiLogEntry) => handler(entry);
       ipcRenderer.on(CHANNELS.apiLogReceived, listener);
@@ -77,13 +96,8 @@ const api = {
     }
   },
   riskGuard: {
-    subscribe: (handler: (request: RiskConfirmationRequest) => void): (() => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, request: RiskConfirmationRequest) => handler(request);
-      ipcRenderer.on(CHANNELS.riskConfirmationRequested, listener);
-      return () => ipcRenderer.removeListener(CHANNELS.riskConfirmationRequested, listener);
-    },
-    resolve: (confirmationId: string, allow: boolean): Promise<boolean> =>
-      ipcRenderer.invoke(CHANNELS.riskConfirmationRespond, confirmationId, allow)
+    subscribe: subscribeRiskConfirmation,
+    resolve: resolveRiskConfirmation
   }
 };
 

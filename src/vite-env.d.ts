@@ -1,13 +1,9 @@
 /// <reference types="vite/client" />
 import type { ApiLogEntry, AppSnapshot, CreateWorkspaceInput, Workspace } from '../shared/contracts';
 import type {
-  ApiLogExportDiscardRequest,
-  ApiLogExportPreviewRequest,
-  ApiLogExportPreviewResult,
-  ApiLogExportSaveRequest,
-  ApiLogExportSaveResult
-} from '../shared/domain/apiLogExportPreview';
-import type { RiskConfirmationRequest } from '../shared/domain/risk';
+  StackpilotIpcEventSubscriber,
+  StackpilotIpcInvokeMethod
+} from '../shared/domain/ipcPayloads';
 import type { MobilePairingServerStatus } from '../shared/domain/mobilePairing';
 
 declare global {
@@ -27,9 +23,9 @@ declare global {
       };
       apiLog: {
         list: (workspaceId: string) => Promise<ApiLogEntry[]>;
-        previewExport: (request: ApiLogExportPreviewRequest) => Promise<ApiLogExportPreviewResult>;
-        saveExport: (request: ApiLogExportSaveRequest) => Promise<ApiLogExportSaveResult>;
-        discardExportPreview: (request: ApiLogExportDiscardRequest) => Promise<boolean>;
+        previewExport: StackpilotIpcInvokeMethod<'api-log:export-preview'>;
+        saveExport: StackpilotIpcInvokeMethod<'api-log:export-save'>;
+        discardExportPreview: StackpilotIpcInvokeMethod<'api-log:export-discard'>;
         subscribe: (handler: (entry: ApiLogEntry) => void) => () => void;
       };
       mobilePairing: {
@@ -39,8 +35,8 @@ declare global {
         subscribe: (handler: (status: MobilePairingServerStatus) => void) => () => void;
       };
       riskGuard: {
-        subscribe: (handler: (request: RiskConfirmationRequest) => void) => () => void;
-        resolve: (confirmationId: string, allow: boolean) => Promise<boolean>;
+        subscribe: StackpilotIpcEventSubscriber<'risk:confirmation-requested'>;
+        resolve: StackpilotIpcInvokeMethod<'risk:confirmation-respond'>;
       };
     };
   }
