@@ -9,6 +9,7 @@ import type {
   StackpilotIpcEventSubscriber,
   StackpilotIpcInvokeMethod
 } from '../../shared/domain/ipcPayloads';
+import type { MobilePairingServerStatus } from '../../shared/domain/mobilePairing';
 
 const previewRequest: ApiLogExportPreviewRequest = {
   workspaceId: 'workspace-1',
@@ -23,23 +24,40 @@ declare const saveExport: StackpilotIpcInvokeMethod<'api-log:export-save'>;
 declare const discardExport: StackpilotIpcInvokeMethod<'api-log:export-discard'>;
 declare const resolveRisk: StackpilotIpcInvokeMethod<'risk:confirmation-respond'>;
 declare const subscribeRisk: StackpilotIpcEventSubscriber<'risk:confirmation-requested'>;
+declare const getMobilePairingStatus: StackpilotIpcInvokeMethod<'mobile-pairing:get-status'>;
+declare const startMobilePairing: StackpilotIpcInvokeMethod<'mobile-pairing:start'>;
+declare const stopMobilePairing: StackpilotIpcInvokeMethod<'mobile-pairing:stop'>;
+declare const subscribeMobilePairingStatus: StackpilotIpcEventSubscriber<'mobile-pairing:status-changed'>;
 
 const previewResult: Promise<ApiLogExportPreviewResult> = previewExport(previewRequest);
 const saveResult: Promise<ApiLogExportSaveResult> = saveExport(saveRequest);
 const discardResult: Promise<boolean> = discardExport(discardRequest);
 const resolveResult: Promise<boolean> = resolveRisk('confirmation-1', true);
-const unsubscribe = subscribeRisk((request) => {
+const mobilePairingStatusResult: Promise<MobilePairingServerStatus> = getMobilePairingStatus();
+const mobilePairingStartResult: Promise<MobilePairingServerStatus> = startMobilePairing();
+const mobilePairingStopResult: Promise<MobilePairingServerStatus> = stopMobilePairing();
+const unsubscribeRisk = subscribeRisk((request) => {
   const confirmationId: string = request.confirmationId;
   const method: string = request.method;
   void confirmationId;
   void method;
+});
+const unsubscribeMobilePairing = subscribeMobilePairingStatus((status) => {
+  const state: MobilePairingServerStatus['state'] = status.state;
+  const pairingUri: string | undefined = status.pairingUri;
+  void state;
+  void pairingUri;
 });
 
 void previewResult;
 void saveResult;
 void discardResult;
 void resolveResult;
-void unsubscribe;
+void mobilePairingStatusResult;
+void mobilePairingStartResult;
+void mobilePairingStopResult;
+void unsubscribeRisk;
+void unsubscribeMobilePairing;
 
 // @ts-expect-error preview requestへsave requestは渡せない
 previewExport(saveRequest);
@@ -51,3 +69,11 @@ void discardExport({ previewId: 123 });
 void resolveRisk('confirmation-1', 'allow');
 // @ts-expect-error event handlerのpayload型はRiskConfirmationRequest
 subscribeRisk((request: number) => request);
+// @ts-expect-error getStatusは引数を受け取らない
+void getMobilePairingStatus('workspace-1');
+// @ts-expect-error startは引数を受け取らない
+void startMobilePairing(true);
+// @ts-expect-error stopは引数を受け取らない
+void stopMobilePairing({ force: true });
+// @ts-expect-error event handlerのpayload型はMobilePairingServerStatus
+subscribeMobilePairingStatus((status: string) => status);
