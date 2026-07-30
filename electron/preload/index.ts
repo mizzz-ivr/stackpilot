@@ -6,7 +6,6 @@ import type {
   StackpilotIpcEventSubscriber,
   StackpilotIpcInvokeMethod
 } from '../../shared/domain/ipcPayloads';
-import type { MobilePairingServerStatus } from '../../shared/domain/mobilePairing';
 
 // sandbox preloadではローカルCommonJSモジュールをrequireできないため、
 // channel値はここで保持し、sharedの型契約とCIのAST比較でmain process側との同期を保証する。
@@ -40,6 +39,29 @@ const saveApiLogExport: StackpilotIpcInvokeMethod<typeof CHANNELS.apiLogExportSa
 
 const discardApiLogExport: StackpilotIpcInvokeMethod<typeof CHANNELS.apiLogExportDiscard> =
   (request) => ipcRenderer.invoke(CHANNELS.apiLogExportDiscard, request);
+
+const getMobilePairingStatus: StackpilotIpcInvokeMethod<
+  typeof CHANNELS.mobilePairingGetStatus
+> = () => ipcRenderer.invoke(CHANNELS.mobilePairingGetStatus);
+
+const startMobilePairing: StackpilotIpcInvokeMethod<
+  typeof CHANNELS.mobilePairingStart
+> = () => ipcRenderer.invoke(CHANNELS.mobilePairingStart);
+
+const stopMobilePairing: StackpilotIpcInvokeMethod<
+  typeof CHANNELS.mobilePairingStop
+> = () => ipcRenderer.invoke(CHANNELS.mobilePairingStop);
+
+const subscribeMobilePairingStatus: StackpilotIpcEventSubscriber<
+  typeof CHANNELS.mobilePairingStatusChanged
+> = (handler) => {
+  const listener = (
+    _event: Electron.IpcRendererEvent,
+    status: StackpilotIpcEventPayload<typeof CHANNELS.mobilePairingStatusChanged>
+  ) => handler(status);
+  ipcRenderer.on(CHANNELS.mobilePairingStatusChanged, listener);
+  return () => ipcRenderer.removeListener(CHANNELS.mobilePairingStatusChanged, listener);
+};
 
 const subscribeRiskConfirmation: StackpilotIpcEventSubscriber<
   typeof CHANNELS.riskConfirmationRequested
@@ -86,14 +108,10 @@ const api = {
     }
   },
   mobilePairing: {
-    getStatus: (): Promise<MobilePairingServerStatus> => ipcRenderer.invoke(CHANNELS.mobilePairingGetStatus),
-    start: (): Promise<MobilePairingServerStatus> => ipcRenderer.invoke(CHANNELS.mobilePairingStart),
-    stop: (): Promise<MobilePairingServerStatus> => ipcRenderer.invoke(CHANNELS.mobilePairingStop),
-    subscribe: (handler: (status: MobilePairingServerStatus) => void): (() => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, status: MobilePairingServerStatus) => handler(status);
-      ipcRenderer.on(CHANNELS.mobilePairingStatusChanged, listener);
-      return () => ipcRenderer.removeListener(CHANNELS.mobilePairingStatusChanged, listener);
-    }
+    getStatus: getMobilePairingStatus,
+    start: startMobilePairing,
+    stop: stopMobilePairing,
+    subscribe: subscribeMobilePairingStatus
   },
   riskGuard: {
     subscribe: subscribeRiskConfirmation,
