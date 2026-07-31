@@ -1,3 +1,4 @@
+import type { ApiLogEntry } from '../../shared/contracts';
 import type {
   ApiLogExportDiscardRequest,
   ApiLogExportPreviewRequest,
@@ -22,6 +23,7 @@ const discardRequest: ApiLogExportDiscardRequest = { previewId: 'preview-1' };
 declare const previewExport: StackpilotIpcInvokeMethod<'api-log:export-preview'>;
 declare const saveExport: StackpilotIpcInvokeMethod<'api-log:export-save'>;
 declare const discardExport: StackpilotIpcInvokeMethod<'api-log:export-discard'>;
+declare const subscribeApiLog: StackpilotIpcEventSubscriber<'api-log:received'>;
 declare const resolveRisk: StackpilotIpcInvokeMethod<'risk:confirmation-respond'>;
 declare const subscribeRisk: StackpilotIpcEventSubscriber<'risk:confirmation-requested'>;
 declare const getMobilePairingStatus: StackpilotIpcInvokeMethod<'mobile-pairing:get-status'>;
@@ -36,6 +38,14 @@ const resolveResult: Promise<boolean> = resolveRisk('confirmation-1', true);
 const mobilePairingStatusResult: Promise<MobilePairingServerStatus> = getMobilePairingStatus();
 const mobilePairingStartResult: Promise<MobilePairingServerStatus> = startMobilePairing();
 const mobilePairingStopResult: Promise<MobilePairingServerStatus> = stopMobilePairing();
+const unsubscribeApiLog = subscribeApiLog((entry) => {
+  const id: ApiLogEntry['id'] = entry.id;
+  const method: ApiLogEntry['method'] = entry.method;
+  const url: ApiLogEntry['url'] = entry.url;
+  void id;
+  void method;
+  void url;
+});
 const unsubscribeRisk = subscribeRisk((request) => {
   const confirmationId: string = request.confirmationId;
   const method: string = request.method;
@@ -56,6 +66,7 @@ void resolveResult;
 void mobilePairingStatusResult;
 void mobilePairingStartResult;
 void mobilePairingStopResult;
+void unsubscribeApiLog;
 void unsubscribeRisk;
 void unsubscribeMobilePairing;
 
@@ -65,6 +76,8 @@ previewExport(saveRequest);
 saveExport(previewRequest);
 // @ts-expect-error discard requestのpreviewIdは文字列が必要
 void discardExport({ previewId: 123 });
+// @ts-expect-error event handlerのpayload型はApiLogEntry
+subscribeApiLog((entry: string) => entry);
 // @ts-expect-error allowはbooleanが必要
 void resolveRisk('confirmation-1', 'allow');
 // @ts-expect-error event handlerのpayload型はRiskConfirmationRequest

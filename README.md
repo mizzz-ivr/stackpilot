@@ -82,13 +82,18 @@ channel追加時は、共有の文字列literal型・利用種別・main実装�
 
 ### 重要IPC payload契約
 
-`shared/domain/ipcPayloads.ts`では、影響の大きいIPCから段階的にrequest・response・event payload型を共有しています。現在の対象は次の5 channelです。
+`shared/domain/ipcPayloads.ts`では、影響の大きいIPCから段階的にrequest・response・event payload型を共有しています。現在の対象は次の10 channelです。
 
 - `api-log:export-preview`
 - `api-log:export-save`
 - `api-log:export-discard`
+- `api-log:received`
 - `risk:confirmation-requested`
 - `risk:confirmation-respond`
+- `mobile-pairing:get-status`
+- `mobile-pairing:start`
+- `mobile-pairing:stop`
+- `mobile-pairing:status-changed`
 
 ```bash
 pnpm check:ipc-payloads
@@ -98,12 +103,12 @@ pnpm check:ipc-payloads
 
 sandbox preloadは共有契約を`import type`でのみ参照します。runtimeのローカルmodule読み込みは追加しません。build済みpreloadの起動はElectron E2Eで確認します。
 
-共有payload型はcompile-timeの整合性を保証するものであり、信頼境界のruntime validationを置き換えません。APIログ保存requestは引き続きmain processの`ApiLogExportService`で`unknown`として受け取り、既存validatorで検証します。
+共有payload型はcompile-timeの整合性を保証するものであり、信頼境界のruntime validationを置き換えません。APIログ保存requestは引き続きmain processの`ApiLogExportService`で`unknown`として受け取り、既存validatorで検証します。APIログ受信eventとMobile pairing statusはmain process内部で生成されるため、共有型追加だけを理由に新しいruntime validatorは追加しません。
 
 対象IPCの型を変更するときは、次を同じPRで確認してください。
 
 - `shared/domain/ipcPayloads.ts`のrequest / result / event payload
-- main processの型付きhandler
+- main processの型付きhandlerまたはevent送信
 - preloadのinvokeまたはsubscribe
 - rendererの`window.stackpilot`公開型
 - `tests/types/criticalIpcPayloadContracts.ts`
@@ -180,7 +185,7 @@ rendererからmain processへ渡すのは、プレビュー生成時のWorkspace
 - `pnpm build`: Desktop renderer / Electronビルド
 - `pnpm check:ipc-channels`: main process / preloadのIPC channel契約チェック
 - `pnpm check:ipc-channel-usage`: 定義済みIPC channelのmain / preload利用カバレッジチェック
-- `pnpm check:ipc-payloads`: APIログ保存・リスク確認IPCのpayload共有契約チェック
+- `pnpm check:ipc-payloads`: 重要IPCのrequest / response / event payload共有契約チェック
 - `pnpm test`: unit test（Vitest）
 - `pnpm test:e2e`: build済みElectronを使用した保存前プレビューE2E
 - `pnpm mobile`: Expo Inspector起動
