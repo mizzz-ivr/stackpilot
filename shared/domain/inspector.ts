@@ -52,6 +52,7 @@ export interface InspectorState {
   logs: NetworkLog[];
   filter: InspectorFilter;
   pinnedLogIds: string[];
+  comparisonLogIds: string[];
   selectedLogId?: string;
   isLoading: boolean;
   errorMessage?: string;
@@ -79,6 +80,7 @@ export const createInitialInspectorState = (): InspectorState => ({
   logs: [],
   filter: { ...defaultInspectorFilter },
   pinnedLogIds: [],
+  comparisonLogIds: [],
   selectedLogId: undefined,
   isLoading: false,
   errorMessage: undefined
