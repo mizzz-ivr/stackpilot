@@ -116,6 +116,15 @@ describe('API Inspectorの一覧フィルター', () => {
     expect(result.map((log) => log.id)).toEqual(['log-2']);
   });
 
+  it('同じ状態参照では同じ派生配列を返す', () => {
+    const filter = withFilter({ query: 'api' });
+    const pinnedIds = ['log-2'];
+    const first = filterLogs(logs, filter, pinnedIds);
+    const second = filterLogs(logs, filter, pinnedIds);
+
+    expect(second).toBe(first);
+  });
+
   it('初期条件と有効な絞り込みを判定する', () => {
     expect(hasActiveInspectorFilters(defaultInspectorFilter)).toBe(false);
     expect(hasActiveInspectorFilters(withFilter({ query: '  ' }))).toBe(false);
