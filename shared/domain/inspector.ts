@@ -4,6 +4,8 @@ import type { SafeResponseBodyPreview } from './responseBody';
 
 export type ResourceType = 'xhr' | 'fetch' | 'other';
 export type InspectorStatusKind = 'unknown' | 'informational' | 'success' | 'redirect' | 'client-error' | 'server-error';
+export type InspectorMethodFilterKind = 'all' | 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OTHER';
+export type InspectorStatusFilterKind = 'all' | 'success' | 'redirect' | 'client-error' | 'server-error' | 'failed';
 export type PayloadKind = 'empty' | 'json' | 'text';
 
 export interface HeaderEntry {
@@ -38,21 +40,33 @@ export interface NetworkLog {
 
 export interface InspectorFilter {
   kind: 'all' | 'xhr' | 'fetch';
+  query: string;
+  method: InspectorMethodFilterKind;
+  status: InspectorStatusFilterKind;
+  pinnedOnly: boolean;
 }
 
 export interface InspectorState {
   logs: NetworkLog[];
   filter: InspectorFilter;
+  pinnedLogIds: string[];
   selectedLogId?: string;
   isLoading: boolean;
   errorMessage?: string;
 }
 
-export const defaultInspectorFilter: InspectorFilter = { kind: 'all' };
+export const defaultInspectorFilter: InspectorFilter = {
+  kind: 'all',
+  query: '',
+  method: 'all',
+  status: 'all',
+  pinnedOnly: false
+};
 
 export const createInitialInspectorState = (): InspectorState => ({
   logs: [],
-  filter: defaultInspectorFilter,
+  filter: { ...defaultInspectorFilter },
+  pinnedLogIds: [],
   selectedLogId: undefined,
   isLoading: false,
   errorMessage: undefined
@@ -77,10 +91,29 @@ export const toNetworkLog = (entry: ApiLogEntry): NetworkLog => ({
   updatedAt: entry.updatedAt
 });
 
-export const filterLogs = (logs: NetworkLog[], filter: InspectorFilter): NetworkLog[] => {
-  if (filter.kind === 'all') return logs;
-  return logs.filter((log) => log.resourceType === filter.kind);
+export const filterLogs = (
+  logs: NetworkLog[],
+  filter: InspectorFilter,
+  pinnedLogIds: string[] = []
+): NetworkLog[] => {
+  const pinnedIds = new Set(pinnedLogIds);
+  const query = normalizeSearchValue(filter.query);
+
+  return logs
+    .filter((log) => filter.kind === 'all' || log.resourceType === filter.kind)
+    .filter((log) => matchesMethodFilter(log, filter.method))
+    .filter((log) => matchesStatusFilter(log, filter.status))
+    .filter((log) => !filter.pinnedOnly || pinnedIds.has(log.id))
+    .filter((log) => query.length === 0 || createSearchText(log).includes(query))
+    .sort((left, right) => Number(pinnedIds.has(right.id)) - Number(pinnedIds.has(left.id)));
 };
+
+export const hasActiveInspectorFilters = (filter: InspectorFilter): boolean =>
+  filter.kind !== defaultInspectorFilter.kind ||
+  normalizeSearchValue(filter.query).length > 0 ||
+  filter.method !== defaultInspectorFilter.method ||
+  filter.status !== defaultInspectorFilter.status ||
+  filter.pinnedOnly;
 
 export const findSelectedLog = (logs: NetworkLog[], selectedLogId?: string): NetworkLog | undefined => {
   if (!selectedLogId) return undefined;
@@ -163,3 +196,32 @@ export const toPathLabel = (url: string): string => {
     return url;
   }
 };
+
+const matchesMethodFilter = (log: NetworkLog, method: InspectorMethodFilterKind): boolean => {
+  if (method === 'all') return true;
+  const normalizedMethod = formatMethodLabel(log.method);
+  if (method === 'OTHER') {
+    return !['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(normalizedMethod);
+  }
+  return normalizedMethod === method;
+};
+
+const matchesStatusFilter = (log: NetworkLog, status: InspectorStatusFilterKind): boolean => {
+  if (status === 'all') return true;
+  if (status === 'failed') return typeof log.status !== 'number';
+  return getStatusKind(log.status) === status;
+};
+
+const createSearchText = (log: NetworkLog): string =>
+  normalizeSearchValue([
+    log.method,
+    log.url,
+    toPathLabel(log.url),
+    log.resourceType,
+    typeof log.status === 'number' ? String(log.status) : '通信エラー failed error',
+    ...Object.entries(log.requestHeaders).flat(),
+    ...Object.entries(log.responseHeaders).flat()
+  ].join(' '));
+
+const normalizeSearchValue = (value: string): string =>
+  value.normalize('NFKC').trim().toLocaleLowerCase('ja-JP');
