@@ -67,6 +67,7 @@ export const ApiLogFilterToolbar = ({
           <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
           <input
             type="search"
+            aria-label="API通信を検索"
             value={filter.query}
             disabled={disabled}
             placeholder="URL・method・headerを検索"
