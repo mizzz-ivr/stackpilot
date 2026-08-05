@@ -89,6 +89,7 @@ export const ApiLogFilterToolbar = ({
 
         <button
           type="button"
+          aria-label="検索・絞り込み条件を解除"
           disabled={disabled || !hasActiveFilters}
           className="shrink-0 rounded-lg border border-slate-700 px-2.5 py-2 text-[11px] font-medium text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-35"
           onClick={onReset}
