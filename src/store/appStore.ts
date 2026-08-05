@@ -8,7 +8,9 @@ import {
   findSelectedLog,
   toNetworkLog,
   type InspectorFilter,
+  type InspectorMethodFilterKind,
   type InspectorState,
+  type InspectorStatusFilterKind,
   type NetworkLog
 } from '../../shared/domain/inspector';
 import { completeWorkspaceSwitch, createInitialWorkspaceSwitchState, startWorkspaceSwitch } from '../../shared/domain/workspaceState';
@@ -40,19 +42,58 @@ interface AppState {
   navigate: (url: string) => Promise<void>;
   openDevTools: () => Promise<void>;
   setInspectorFilter: (kind: InspectorFilter['kind']) => void;
+  setInspectorQuery: (query: string) => void;
+  setInspectorMethodFilter: (method: InspectorMethodFilterKind) => void;
+  setInspectorStatusFilter: (status: InspectorStatusFilterKind) => void;
+  toggleInspectorPinnedOnly: () => void;
+  resetInspectorFilters: () => void;
+  toggleInspectorPin: (logId: string) => void;
   selectInspectorLog: (logId?: string) => void;
   createWorkspace: (input: CreateWorkspaceFormInput) => Promise<void>;
   requestRiskConfirmation: (request: RiskConfirmationRequest) => boolean;
   resolveRiskConfirmation: (decision: RiskDialogDecision) => RiskConfirmationRequest | undefined;
 }
 
+const maxInspectorLogs = 500;
 let unsubscribeApiLog: undefined | (() => void);
 
-const upsertInspectorLog = (logs: NetworkLog[], entry: ApiLogEntry): NetworkLog[] => {
+const upsertInspectorLog = (
+  logs: NetworkLog[],
+  entry: ApiLogEntry,
+  pinnedLogIds: string[]
+): NetworkLog[] => {
   const next = toNetworkLog(entry);
   const existingIndex = logs.findIndex((log) => log.id === next.id);
-  if (existingIndex < 0) return [next, ...logs].slice(0, 500);
-  return logs.map((log, index) => (index === existingIndex ? next : log));
+  const nextLogs = existingIndex < 0
+    ? [next, ...logs]
+    : logs.map((log, index) => (index === existingIndex ? next : log));
+
+  if (nextLogs.length <= maxInspectorLogs) return nextLogs;
+
+  const pinnedIds = new Set(pinnedLogIds);
+  const retainedIds = new Set<string>();
+  for (const log of nextLogs) {
+    if (pinnedIds.has(log.id) && retainedIds.size < maxInspectorLogs) retainedIds.add(log.id);
+  }
+  for (const log of nextLogs) {
+    if (!pinnedIds.has(log.id) && retainedIds.size < maxInspectorLogs) retainedIds.add(log.id);
+  }
+  return nextLogs.filter((log) => retainedIds.has(log.id));
+};
+
+const applyInspectorFilter = (
+  inspector: InspectorState,
+  nextFilter: InspectorFilter
+): InspectorState => {
+  const visibleLogs = filterLogs(inspector.logs, nextFilter, inspector.pinnedLogIds);
+  return {
+    ...inspector,
+    filter: nextFilter,
+    selectedLogId:
+      inspector.selectedLogId && visibleLogs.some((log) => log.id === inspector.selectedLogId)
+        ? inspector.selectedLogId
+        : undefined
+  };
 };
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -83,7 +124,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         set((state) => ({
           inspector: {
             ...state.inspector,
-            logs: upsertInspectorLog(state.inspector.logs, entry)
+            logs: upsertInspectorLog(state.inspector.logs, entry, state.inspector.pinnedLogIds)
           }
         }));
       });
@@ -96,10 +137,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         inspector: {
           ...get().inspector,
           logs: logs.map(toNetworkLog),
+          filter: { ...defaultInspectorFilter },
+          pinnedLogIds: [],
           selectedLogId: undefined,
           isLoading: false,
-          errorMessage: undefined,
-          filter: defaultInspectorFilter
+          errorMessage: undefined
         },
         switchingWorkspaceId: undefined
       });
@@ -115,7 +157,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     set((state) => ({
       ...startWorkspaceSwitch(state, workspaceId),
-      inspector: { ...state.inspector, selectedLogId: undefined, isLoading: true, errorMessage: undefined }
+      inspector: {
+        ...state.inspector,
+        filter: { ...defaultInspectorFilter },
+        pinnedLogIds: [],
+        selectedLogId: undefined,
+        isLoading: true,
+        errorMessage: undefined
+      }
     }));
 
     const activeTab = targetWorkspace.tabs.find((tab) => tab.isActive) ?? targetWorkspace.tabs[0];
@@ -133,6 +182,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         inspector: {
           ...state.inspector,
           logs: logs.map(toNetworkLog),
+          filter: { ...defaultInspectorFilter },
+          pinnedLogIds: [],
           selectedLogId: undefined,
           isLoading: false,
           errorMessage: undefined
@@ -146,6 +197,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         inspector: {
           ...state.inspector,
           logs: [],
+          filter: { ...defaultInspectorFilter },
+          pinnedLogIds: [],
           selectedLogId: undefined,
           isLoading: false,
           errorMessage: 'ログ取得に失敗しました。'
@@ -179,7 +232,50 @@ export const useAppStore = create<AppState>((set, get) => ({
     await window.stackpilot.browser.openDevTools();
   },
   setInspectorFilter: (kind) => {
-    set((state) => ({ inspector: { ...state.inspector, filter: { kind }, selectedLogId: undefined } }));
+    set((state) => ({
+      inspector: applyInspectorFilter(state.inspector, { ...state.inspector.filter, kind })
+    }));
+  },
+  setInspectorQuery: (query) => {
+    set((state) => ({
+      inspector: applyInspectorFilter(state.inspector, { ...state.inspector.filter, query })
+    }));
+  },
+  setInspectorMethodFilter: (method) => {
+    set((state) => ({
+      inspector: applyInspectorFilter(state.inspector, { ...state.inspector.filter, method })
+    }));
+  },
+  setInspectorStatusFilter: (status) => {
+    set((state) => ({
+      inspector: applyInspectorFilter(state.inspector, { ...state.inspector.filter, status })
+    }));
+  },
+  toggleInspectorPinnedOnly: () => {
+    set((state) => ({
+      inspector: applyInspectorFilter(state.inspector, {
+        ...state.inspector.filter,
+        pinnedOnly: !state.inspector.filter.pinnedOnly
+      })
+    }));
+  },
+  resetInspectorFilters: () => {
+    set((state) => ({
+      inspector: applyInspectorFilter(state.inspector, { ...defaultInspectorFilter })
+    }));
+  },
+  toggleInspectorPin: (logId) => {
+    set((state) => {
+      if (!state.inspector.logs.some((log) => log.id === logId)) return state;
+      const isPinned = state.inspector.pinnedLogIds.includes(logId);
+      const pinnedLogIds = isPinned
+        ? state.inspector.pinnedLogIds.filter((id) => id !== logId)
+        : [...state.inspector.pinnedLogIds, logId];
+      const nextInspector = { ...state.inspector, pinnedLogIds };
+      return {
+        inspector: applyInspectorFilter(nextInspector, nextInspector.filter)
+      };
+    });
   },
   selectInspectorLog: (logId) => {
     set((state) => ({
@@ -215,5 +311,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   }
 }));
 
-export const selectFilteredLogs = (state: AppState) => filterLogs(state.inspector.logs, state.inspector.filter);
-export const selectSelectedLog = (state: AppState) => findSelectedLog(state.inspector.logs, state.inspector.selectedLogId);
+export const selectFilteredLogs = (state: AppState) =>
+  filterLogs(state.inspector.logs, state.inspector.filter, state.inspector.pinnedLogIds);
+export const selectSelectedLog = (state: AppState) =>
+  findSelectedLog(state.inspector.logs, state.inspector.selectedLogId);
