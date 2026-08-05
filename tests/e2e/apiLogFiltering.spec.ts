@@ -11,7 +11,7 @@ test('API通信を検索・絞り込み・ピン留めできる', async ({ appWi
   await searchInput.fill('customer-123');
   await expect(appWindow.getByText(fixturePath, { exact: true })).toBeVisible();
 
-  await searchInput.fill('accept');
+  await searchInput.fill('x-internal-reference');
   await expect(appWindow.getByText(fixturePath, { exact: true })).toBeVisible();
 
   await searchInput.fill('一致しないキーワード');
