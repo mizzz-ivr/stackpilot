@@ -65,6 +65,16 @@ export const defaultInspectorFilter: InspectorFilter = {
   pinnedOnly: false
 };
 
+const emptyPinnedLogIds: string[] = [];
+let filterLogsCache:
+  | {
+      logs: NetworkLog[];
+      filter: InspectorFilterInput;
+      pinnedLogIds: string[];
+      result: NetworkLog[];
+    }
+  | undefined;
+
 export const createInitialInspectorState = (): InspectorState => ({
   logs: [],
   filter: { ...defaultInspectorFilter },
@@ -96,19 +106,29 @@ export const toNetworkLog = (entry: ApiLogEntry): NetworkLog => ({
 export const filterLogs = (
   logs: NetworkLog[],
   filter: InspectorFilterInput,
-  pinnedLogIds: string[] = []
+  pinnedLogIds: string[] = emptyPinnedLogIds
 ): NetworkLog[] => {
+  if (
+    filterLogsCache?.logs === logs &&
+    filterLogsCache.filter === filter &&
+    filterLogsCache.pinnedLogIds === pinnedLogIds
+  ) {
+    return filterLogsCache.result;
+  }
+
   const effectiveFilter: InspectorFilter = { ...defaultInspectorFilter, ...filter };
   const pinnedIds = new Set(pinnedLogIds);
   const query = normalizeSearchValue(effectiveFilter.query);
-
-  return logs
+  const result = logs
     .filter((log) => effectiveFilter.kind === 'all' || log.resourceType === effectiveFilter.kind)
     .filter((log) => matchesMethodFilter(log, effectiveFilter.method))
     .filter((log) => matchesStatusFilter(log, effectiveFilter.status))
     .filter((log) => !effectiveFilter.pinnedOnly || pinnedIds.has(log.id))
     .filter((log) => query.length === 0 || createSearchText(log).includes(query))
     .sort((left, right) => Number(pinnedIds.has(right.id)) - Number(pinnedIds.has(left.id)));
+
+  filterLogsCache = { logs, filter, pinnedLogIds, result };
+  return result;
 };
 
 export const hasActiveInspectorFilters = (filter: InspectorFilter): boolean =>
