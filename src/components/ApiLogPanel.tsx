@@ -15,7 +15,6 @@ import {
   toHeaderEntries,
   toPathLabel,
   type HeaderEntry,
-  type InspectorFilter,
   type NetworkLog,
   type PayloadPreview
 } from '../../shared/domain/inspector';
@@ -32,9 +31,8 @@ import {
   type ApiLogExportFeedback,
   type ApiLogExportMaskingDraft
 } from './ApiLogExportPreviewDialog';
+import { ApiLogFilterToolbar, PinIcon } from './ApiLogFilterToolbar';
 import { selectFilteredLogs, selectSelectedLog, useAppStore } from '../store/appStore';
-
-const filterButtons: InspectorFilter['kind'][] = ['all', 'xhr', 'fetch'];
 
 const HeaderList = ({ entries, emptyLabel }: { entries: HeaderEntry[]; emptyLabel: string }) => {
   if (entries.length === 0) {
@@ -188,8 +186,14 @@ const LogDetails = ({ log }: { log?: NetworkLog }) => {
 
 export const ApiLogPanel = () => {
   const activeWorkspaceId = useAppStore((state) => state.activeWorkspaceId);
-  const { filter, isLoading, errorMessage, logs, selectedLogId } = useAppStore((state) => state.inspector);
+  const { filter, isLoading, errorMessage, logs, selectedLogId, pinnedLogIds } = useAppStore((state) => state.inspector);
   const setInspectorFilter = useAppStore((state) => state.setInspectorFilter);
+  const setInspectorQuery = useAppStore((state) => state.setInspectorQuery);
+  const setInspectorMethodFilter = useAppStore((state) => state.setInspectorMethodFilter);
+  const setInspectorStatusFilter = useAppStore((state) => state.setInspectorStatusFilter);
+  const toggleInspectorPinnedOnly = useAppStore((state) => state.toggleInspectorPinnedOnly);
+  const resetInspectorFilters = useAppStore((state) => state.resetInspectorFilters);
+  const toggleInspectorPin = useAppStore((state) => state.toggleInspectorPin);
   const selectInspectorLog = useAppStore((state) => state.selectInspectorLog);
   const filtered = useAppStore(selectFilteredLogs);
   const selectedLog = useAppStore(selectSelectedLog);
@@ -201,13 +205,20 @@ export const ApiLogPanel = () => {
   const [exportFeedback, setExportFeedback] = useState<ApiLogExportFeedback>();
   const [previewFeedback, setPreviewFeedback] = useState<ApiLogExportFeedback>();
 
+  const pinnedIds = useMemo(() => new Set(pinnedLogIds), [pinnedLogIds]);
+  const exportEligibleCount = useMemo(
+    () => logs.filter((log) => filter.kind === 'all' || log.resourceType === filter.kind).length,
+    [filter.kind, logs]
+  );
+
   const emptyLabel = useMemo(() => {
     if (!activeWorkspaceId) return 'ワークスペースを選択してください';
     if (isLoading) return 'APIログを読み込み中です';
     if (logs.length === 0) return 'ログ未取得: XHR / fetch 通信を待っています';
-    if (filtered.length === 0) return `通信なし: ${filter.kind} に一致するログはありません`;
+    if (filter.pinnedOnly && pinnedLogIds.length === 0) return 'ピン留めされた通信はありません。';
+    if (filtered.length === 0) return '検索・絞り込み条件に一致する通信はありません。';
     return undefined;
-  }, [activeWorkspaceId, filter.kind, filtered.length, isLoading, logs.length]);
+  }, [activeWorkspaceId, filter.pinnedOnly, filtered.length, isLoading, logs.length, pinnedLogIds.length]);
 
   const parsedMaskingRules = useMemo(
     () => parseApiLogExportCustomMaskingRuleText(maskingDraft),
@@ -385,7 +396,7 @@ export const ApiLogPanel = () => {
 
   const exportDisabled =
     !activeWorkspaceId ||
-    filtered.length === 0 ||
+    exportEligibleCount === 0 ||
     Boolean(previewingFormat) ||
     isPreviewBusy;
 
@@ -394,26 +405,28 @@ export const ApiLogPanel = () => {
       <aside className="flex h-full w-[420px] min-w-[340px] max-w-[42vw] flex-col border-l border-slate-800 bg-slate-950/80">
         <div className="border-b border-slate-800 px-3 py-2">
           <h2 className="text-sm font-semibold text-slate-100">API Inspector</h2>
-          <p className="text-xs text-slate-400">通信を選択してヘッダーと安全化済み本文を確認</p>
+          <p className="text-xs text-slate-400">通信を検索・ピン留めして安全化済みの詳細を確認</p>
         </div>
 
-        <div className="space-y-2 border-b border-slate-800 px-3 py-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              {filterButtons.map((kind) => (
-                <button
-                  key={kind}
-                  type="button"
-                  className={`rounded px-2 py-1 text-xs ${
-                    filter.kind === kind ? 'bg-indigo-500/30 text-indigo-200' : 'bg-slate-800 text-slate-300'
-                  }`}
-                  onClick={() => setInspectorFilter(kind)}
-                >
-                  {kind}
-                </button>
-              ))}
-            </div>
+        <div className="space-y-3 border-b border-slate-800 px-3 py-2.5">
+          <ApiLogFilterToolbar
+            filter={filter}
+            totalCount={logs.length}
+            visibleCount={filtered.length}
+            pinnedCount={pinnedLogIds.length}
+            disabled={isLoading}
+            onResourceKindChange={setInspectorFilter}
+            onQueryChange={setInspectorQuery}
+            onMethodChange={setInspectorMethodFilter}
+            onStatusChange={setInspectorStatusFilter}
+            onTogglePinnedOnly={toggleInspectorPinnedOnly}
+            onReset={resetInspectorFilters}
+          />
 
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800/80 pt-2">
+            <p className="max-w-[230px] text-[10px] leading-4 text-slate-500">
+              JSON/HAR保存は検索・method・status・ピンを含めず、{filter.kind}ログ最大500件が対象です。
+            </p>
             <div className="flex items-center gap-2">
               {(['json', 'har'] as const).map((format) => (
                 <button
@@ -429,9 +442,7 @@ export const ApiLogPanel = () => {
               ))}
             </div>
           </div>
-          <p className="text-[10px] leading-4 text-slate-500">
-            現在の{filter.kind}ログを最大500件安全化し、必要に応じてpath・query・header・bodyを追加マスキングしてから保存します。
-          </p>
+
           {exportFeedback ? (
             <p
               role="status"
@@ -462,23 +473,44 @@ export const ApiLogPanel = () => {
               <div className="space-y-1">
                 {filtered.map((log) => {
                   const isSelected = selectedLogId === log.id;
+                  const isPinned = pinnedIds.has(log.id);
                   return (
-                    <button
+                    <div
                       key={log.id}
-                      type="button"
-                      aria-pressed={isSelected}
-                      className={`grid w-full grid-cols-[52px_42px_58px_minmax(0,1fr)] gap-2 rounded-lg px-2 py-2 text-left text-xs transition-colors ${
-                        isSelected ? 'bg-indigo-500/20 ring-1 ring-indigo-400/40' : 'hover:bg-slate-900'
+                      className={`grid grid-cols-[30px_minmax(0,1fr)] items-stretch rounded-lg transition-colors ${
+                        isSelected
+                          ? 'bg-indigo-500/20 ring-1 ring-indigo-400/40'
+                          : isPinned
+                            ? 'bg-amber-500/[0.07] ring-1 ring-amber-400/10'
+                            : 'hover:bg-slate-900'
                       }`}
-                      onClick={() => selectInspectorLog(log.id)}
                     >
-                      <span className="font-medium text-slate-200">{formatMethodLabel(log.method)}</span>
-                      <span className={getStatusTone(log.status)}>{log.status ?? '-'}</span>
-                      <span className="text-slate-400">{formatDurationLabel(log.durationMs)}</span>
-                      <span className="truncate text-slate-300" title={log.url}>
-                        {toPathLabel(log.url)}
-                      </span>
-                    </button>
+                      <button
+                        type="button"
+                        aria-label={isPinned ? '通信のピン留めを解除' : '通信をピン留め'}
+                        aria-pressed={isPinned}
+                        title={isPinned ? 'ピン留めを解除' : '一覧上部へピン留め'}
+                        className={`flex items-center justify-center rounded-l-lg transition-colors ${
+                          isPinned ? 'text-amber-300' : 'text-slate-600 hover:text-slate-300'
+                        }`}
+                        onClick={() => toggleInspectorPin(log.id)}
+                      >
+                        <PinIcon className="h-3.5 w-3.5" filled={isPinned} />
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={isSelected}
+                        className="grid w-full grid-cols-[52px_42px_58px_minmax(0,1fr)] gap-2 rounded-r-lg px-1.5 py-2 text-left text-xs"
+                        onClick={() => selectInspectorLog(log.id)}
+                      >
+                        <span className="font-medium text-slate-200">{formatMethodLabel(log.method)}</span>
+                        <span className={getStatusTone(log.status)}>{log.status ?? 'ERR'}</span>
+                        <span className="text-slate-400">{formatDurationLabel(log.durationMs)}</span>
+                        <span className="truncate text-slate-300" title={log.url}>
+                          {toPathLabel(log.url)}
+                        </span>
+                      </button>
+                    </div>
                   );
                 })}
               </div>
