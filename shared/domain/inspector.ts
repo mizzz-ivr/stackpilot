@@ -46,6 +46,8 @@ export interface InspectorFilter {
   pinnedOnly: boolean;
 }
 
+export type InspectorFilterInput = Pick<InspectorFilter, 'kind'> & Partial<Omit<InspectorFilter, 'kind'>>;
+
 export interface InspectorState {
   logs: NetworkLog[];
   filter: InspectorFilter;
@@ -93,17 +95,18 @@ export const toNetworkLog = (entry: ApiLogEntry): NetworkLog => ({
 
 export const filterLogs = (
   logs: NetworkLog[],
-  filter: InspectorFilter,
+  filter: InspectorFilterInput,
   pinnedLogIds: string[] = []
 ): NetworkLog[] => {
+  const effectiveFilter: InspectorFilter = { ...defaultInspectorFilter, ...filter };
   const pinnedIds = new Set(pinnedLogIds);
-  const query = normalizeSearchValue(filter.query);
+  const query = normalizeSearchValue(effectiveFilter.query);
 
   return logs
-    .filter((log) => filter.kind === 'all' || log.resourceType === filter.kind)
-    .filter((log) => matchesMethodFilter(log, filter.method))
-    .filter((log) => matchesStatusFilter(log, filter.status))
-    .filter((log) => !filter.pinnedOnly || pinnedIds.has(log.id))
+    .filter((log) => effectiveFilter.kind === 'all' || log.resourceType === effectiveFilter.kind)
+    .filter((log) => matchesMethodFilter(log, effectiveFilter.method))
+    .filter((log) => matchesStatusFilter(log, effectiveFilter.status))
+    .filter((log) => !effectiveFilter.pinnedOnly || pinnedIds.has(log.id))
     .filter((log) => query.length === 0 || createSearchText(log).includes(query))
     .sort((left, right) => Number(pinnedIds.has(right.id)) - Number(pinnedIds.has(left.id)));
 };
