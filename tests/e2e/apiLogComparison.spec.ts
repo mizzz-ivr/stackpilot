@@ -33,10 +33,11 @@ test('選択した2件のAPI通信を差分表示し、安全化済みJSONを保
   const statusRow = dialog.getByRole('row').filter({ hasText: 'Status' });
   await expect(statusRow.getByText('200', { exact: true })).toBeVisible();
   await expect(statusRow.getByText('503', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('accept', { exact: true })).toBeVisible();
 
   await dialog.getByRole('checkbox', { name: '差分のある項目だけを表示', exact: true }).check();
   await expect(dialog.getByText(/表示 \d+ \/ 全\d+項目・差分\d+件/)).toBeVisible();
-  await expect(dialog.getByRole('row').filter({ hasText: 'Resource type' })).toHaveCount(0);
+  await expect(dialog.getByText('accept', { exact: true })).toHaveCount(0);
   await expect(dialog.getByRole('row').filter({ hasText: 'Method' })).toBeVisible();
   await expect(dialog.getByText('retry-after', { exact: true })).toBeVisible();
 
