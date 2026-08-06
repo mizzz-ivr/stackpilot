@@ -89,11 +89,11 @@ previewExport(saveRequest);
 saveExport(previewRequest);
 // @ts-expect-error discard requestのpreviewIdは文字列が必要
 void discardExport({ previewId: 123 });
-// @ts-expect-error comparison requestのdifferencesOnlyはbooleanが必要
 void saveComparison({
   workspaceId: 'workspace-1',
   leftLogId: 'log-left',
   rightLogId: 'log-right',
+  // @ts-expect-error comparison requestのdifferencesOnlyはbooleanが必要
   differencesOnly: 'true'
 });
 // @ts-expect-error event handlerのpayload型はApiLogEntry
