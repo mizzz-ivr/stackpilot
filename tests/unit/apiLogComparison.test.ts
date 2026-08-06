@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   compareNetworkLogs,
+  createApiLogComparisonView,
   reconcileComparisonLogIds,
   selectComparisonLogs,
   toggleComparisonLogId
@@ -106,6 +107,42 @@ describe('API通信の差分判定', () => {
     expect(result.requestHeaders.find((row) => row.name === 'x-request-id')?.difference).toBe('different');
     expect(result.requestHeaders.find((row) => row.name === 'x-retry-mode')?.difference).toBe('right-only');
     expect(result.responseHeaders.find((row) => row.name === 'retry-after')?.difference).toBe('right-only');
+  });
+
+  it('差分のみ表示では同一項目を除外して件数を返す', () => {
+    const comparison = compareNetworkLogs(
+      createLog(),
+      createLog({
+        id: 'log-2',
+        status: 503,
+        requestHeaders: {
+          accept: 'application/json',
+          'x-request-id': 'request-2'
+        }
+      })
+    );
+
+    const all = createApiLogComparisonView(comparison, false);
+    const differences = createApiLogComparisonView(comparison, true);
+
+    expect(all.counts.total).toBeGreaterThan(all.counts.different);
+    expect(all.counts.visible).toBe(all.counts.total);
+    expect(differences.counts.visible).toBe(differences.counts.different);
+    expect(differences.summary.every((row) => row.difference !== 'same')).toBe(true);
+    expect(differences.requestHeaders.every((row) => row.difference !== 'same')).toBe(true);
+    expect(differences.requestBody).toBeUndefined();
+    expect(differences.responseBody).toBeUndefined();
+  });
+
+  it('差分がない場合は差分のみ表示件数を0件にする', () => {
+    const left = createLog();
+    const comparison = compareNetworkLogs(left, { ...left, id: 'log-2' });
+    const view = createApiLogComparisonView(comparison, true);
+
+    expect(view.hasDifferences).toBe(false);
+    expect(view.counts.different).toBe(0);
+    expect(view.counts.visible).toBe(0);
+    expect(view.summary).toEqual([]);
   });
 
   it('JSONの空白差は整形後に同一と判定する', () => {
