@@ -50,6 +50,21 @@ export interface ApiLogComparison {
   hasDifferences: boolean;
 }
 
+export interface ApiLogComparisonView {
+  summary: ScalarComparisonRow[];
+  requestHeaders: HeaderComparisonRow[];
+  responseHeaders: HeaderComparisonRow[];
+  requestBody?: BodyComparison;
+  responseBody?: BodyComparison;
+  counts: {
+    total: number;
+    different: number;
+    visible: number;
+  };
+  hasDifferences: boolean;
+  differencesOnly: boolean;
+}
+
 export const reconcileComparisonLogIds = (
   logs: NetworkLog[],
   comparisonLogIds: string[]
@@ -108,11 +123,48 @@ export const compareNetworkLogs = (left: NetworkLog, right: NetworkLog): ApiLogC
     requestBody,
     responseBody,
     hasDifferences:
-      summary.some((row) => row.difference !== 'same') ||
-      requestHeaders.some((row) => row.difference !== 'same') ||
-      responseHeaders.some((row) => row.difference !== 'same') ||
+      summary.some(isDifferentRow) ||
+      requestHeaders.some(isDifferentRow) ||
+      responseHeaders.some(isDifferentRow) ||
       requestBody.difference !== 'same' ||
       responseBody.difference !== 'same'
+  };
+};
+
+export const createApiLogComparisonView = (
+  comparison: ApiLogComparison,
+  differencesOnly: boolean
+): ApiLogComparisonView => {
+  const differentSummary = comparison.summary.filter(isDifferentRow);
+  const differentRequestHeaders = comparison.requestHeaders.filter(isDifferentRow);
+  const differentResponseHeaders = comparison.responseHeaders.filter(isDifferentRow);
+  const requestBodyIsDifferent = comparison.requestBody.difference !== 'same';
+  const responseBodyIsDifferent = comparison.responseBody.difference !== 'same';
+  const total =
+    comparison.summary.length +
+    comparison.requestHeaders.length +
+    comparison.responseHeaders.length +
+    2;
+  const different =
+    differentSummary.length +
+    differentRequestHeaders.length +
+    differentResponseHeaders.length +
+    Number(requestBodyIsDifferent) +
+    Number(responseBodyIsDifferent);
+
+  return {
+    summary: differencesOnly ? differentSummary : comparison.summary,
+    requestHeaders: differencesOnly ? differentRequestHeaders : comparison.requestHeaders,
+    responseHeaders: differencesOnly ? differentResponseHeaders : comparison.responseHeaders,
+    requestBody: differencesOnly && !requestBodyIsDifferent ? undefined : comparison.requestBody,
+    responseBody: differencesOnly && !responseBodyIsDifferent ? undefined : comparison.responseBody,
+    counts: {
+      total,
+      different,
+      visible: differencesOnly ? different : total
+    },
+    hasDifferences: comparison.hasDifferences,
+    differencesOnly
   };
 };
 
@@ -240,6 +292,9 @@ const bodySignature = (body: ComparableBody): string =>
     unavailableReason: body.unavailableReason ?? null,
     redactedFieldPaths: body.redactedFieldPaths
   });
+
+const isDifferentRow = (row: { difference: ComparisonDifferenceKind }): boolean =>
+  row.difference !== 'same';
 
 const formatStatus = (status?: number): string =>
   typeof status === 'number' ? String(status) : '通信エラー';
