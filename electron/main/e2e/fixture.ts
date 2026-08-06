@@ -9,6 +9,7 @@ export const stackpilotE2eSensitivePathSegment = 'customer-123';
 
 const fixtureTimestamp = '2026-07-28T00:00:00.000Z';
 const fixtureUrl = `https://api.example.test/users/${stackpilotE2eSensitivePathSegment}/orders?trace=public`;
+const comparisonFixtureUrl = 'https://api.example.test/health?region=jp';
 
 export const isStackpilotE2eMode = (): boolean => process.env.STACKPILOT_E2E === '1';
 
@@ -85,43 +86,87 @@ export const seedStackpilotE2eApiLog = async (
     responseHeaders: Record<string, string>;
   }) => void;
 
-  await new Promise<void>((resolve, reject) => {
-    beforeRequest(
-      {
-        id: 1,
-        method: 'GET',
-        url: fixtureUrl,
-        resourceType: 'xhr',
-        webContentsId: 1
-      },
-      ({ cancel }) => {
-        if (cancel) {
-          reject(new Error('E2E固定ログのrequestがキャンセルされました。'));
-          return;
+  const seedRequest = async ({
+    id,
+    method,
+    url,
+    resourceType,
+    requestHeaders,
+    statusCode,
+    responseHeaders
+  }: {
+    id: number;
+    method: string;
+    url: string;
+    resourceType: 'xhr' | 'fetch';
+    requestHeaders: Record<string, string>;
+    statusCode: number;
+    responseHeaders: Record<string, string>;
+  }): Promise<void> => {
+    await new Promise<void>((resolve, reject) => {
+      beforeRequest(
+        {
+          id,
+          method,
+          url,
+          resourceType,
+          webContentsId: 1
+        },
+        ({ cancel }) => {
+          if (cancel) {
+            reject(new Error(`E2E固定ログ${id}のrequestがキャンセルされました。`));
+            return;
+          }
+          resolve();
         }
-        resolve();
-      }
+      );
+    });
+
+    beforeSendHeaders(
+      {
+        id,
+        requestHeaders
+      },
+      () => undefined
     );
-  });
 
-  beforeSendHeaders(
-    {
-      id: 1,
-      requestHeaders: {
-        accept: 'application/json'
-      }
-    },
-    () => undefined
-  );
+    completed({
+      id,
+      method,
+      url,
+      statusCode,
+      responseHeaders
+    });
+  };
 
-  completed({
+  await seedRequest({
     id: 1,
     method: 'GET',
     url: fixtureUrl,
+    resourceType: 'xhr',
+    requestHeaders: {
+      accept: 'application/json'
+    },
     statusCode: 200,
     responseHeaders: {
       'content-type': 'application/json',
       location: `https://api.example.test/users/${stackpilotE2eSensitivePathSegment}/summary`
+    }
+  });
+
+  await seedRequest({
+    id: 2,
+    method: 'POST',
+    url: comparisonFixtureUrl,
+    resourceType: 'fetch',
+    requestHeaders: {
+      accept: 'application/json',
+      'x-retry-mode': 'manual'
+    },
+    statusCode: 503,
+    responseHeaders: {
+      'content-type': 'application/json',
+      'retry-after': '30'
     }
   });
 };
