@@ -13,6 +13,7 @@ export const CHANNELS = {
   apiLogExportPreview: 'api-log:export-preview',
   apiLogExportSave: 'api-log:export-save',
   apiLogExportDiscard: 'api-log:export-discard',
+  apiLogComparisonExport: 'api-log:comparison-export',
   apiLogReceived: 'api-log:received',
   riskConfirmationRequested: 'risk:confirmation-requested',
   riskConfirmationRespond: 'risk:confirmation-respond',
