@@ -29,7 +29,7 @@ Expo Goで表示されたQRコードを読み込んで確認します。`EXPO_PU
 
 ### Electron E2E
 
-保存前プレビューの重要操作はPlaywrightでElectronを起動して検証します。テストはbuild済みのrenderer・preload・main processを使用します。
+保存前プレビュー、検索・ピン留め、API通信比較の重要操作はPlaywrightでElectronを起動して検証します。テストはbuild済みのrenderer・preload・main processを使用します。
 
 ```bash
 pnpm build
@@ -82,11 +82,12 @@ channel追加時は、共有の文字列literal型・利用種別・main実装�
 
 ### 重要IPC payload契約
 
-`shared/domain/ipcPayloads.ts`では、影響の大きいIPCから段階的にrequest・response・event payload型を共有しています。現在の対象は次の10 channelです。
+`shared/domain/ipcPayloads.ts`では、影響の大きいIPCから段階的にrequest・response・event payload型を共有しています。現在の対象は次の11 channelです。
 
 - `api-log:export-preview`
 - `api-log:export-save`
 - `api-log:export-discard`
+- `api-log:comparison-export`
 - `api-log:received`
 - `risk:confirmation-requested`
 - `risk:confirmation-respond`
@@ -103,7 +104,7 @@ pnpm check:ipc-payloads
 
 sandbox preloadは共有契約を`import type`でのみ参照します。runtimeのローカルmodule読み込みは追加しません。build済みpreloadの起動はElectron E2Eで確認します。
 
-共有payload型はcompile-timeの整合性を保証するものであり、信頼境界のruntime validationを置き換えません。APIログ保存requestは引き続きmain processの`ApiLogExportService`で`unknown`として受け取り、既存validatorで検証します。APIログ受信eventとMobile pairing statusはmain process内部で生成されるため、共有型追加だけを理由に新しいruntime validatorは追加しません。
+共有payload型はcompile-timeの整合性を保証するものであり、信頼境界のruntime validationを置き換えません。APIログ保存requestはmain processの`ApiLogExportService`、比較レポート保存requestは`ApiLogComparisonExportService`で`unknown`として受け取り、各validatorで検証します。APIログ受信eventとMobile pairing statusはmain process内部で生成されるため、共有型追加だけを理由に新しいruntime validatorは追加しません。
 
 対象IPCの型を変更するときは、次を同じPRで確認してください。
 
@@ -115,6 +116,36 @@ sandbox preloadは共有契約を`import type`でのみ参照します。runtime
 - `pnpm check:ipc-payloads`
 
 全IPCを一括移行せず、既存挙動を維持しながら影響の大きい経路から段階的に追加します。
+
+## API通信比較と安全化済み比較レポート
+
+Desktop API Inspectorでは、一覧から最大2件の通信を比較A/Bへ追加し、次を横並びで確認できます。
+
+- Method、URL、resource type、status、duration
+- Request / Response headers
+- Request / Response body
+- bodyの取得状態、Content-Type、byte length、伏字項目
+
+Header名は大文字小文字を区別せず比較します。JSON bodyは表示時と同じ整形済みテキストへ正規化するため、空白とインデントだけの違いは差分になりません。
+
+「差分のみ」を有効にすると、同一の概要行・header・bodyセクションを非表示にします。画面上には表示件数、全項目数、差分件数を表示します。
+
+比較モーダルの`JSON保存`では、`stackpilot-safe-api-log-comparison` version 1を保存できます。rendererからmain processへ渡す値は、Workspace ID、比較A/BのログID、差分のみ設定だけです。ログ本文、artifact本文、保存先パスは渡しません。
+
+main processは対象ログを再取得し、次を適用して成果物を生成します。
+
+- URL userinfoを除去
+- URL fragmentを`#redacted`へ置換
+- token、password、signature等の機密query値を`<redacted>`へ置換
+- Authorization、Cookie、API key等の機密header値を`<redacted>`へ置換
+- Location等のURL系headerを再安全化
+- Request / Response bodyは既存の安全化済みpreviewだけを使用
+- raw bodyと通信エラー文字列を出力しない
+- 通信エラーは`request-failed`固定値へ置換
+
+保存先はElectronの保存ダイアログで選択します。保存成功時はSHA-256、差分件数、出力項目数、保存先を画面へ表示します。差分のみがONの場合、同一項目はJSON成果物にも含まれません。
+
+自動機密判定はfield名・header名・query名に基づくため、通常名の項目に含まれる個人情報や業務情報を意味解析して検出するものではありません。外部共有前に成果物を確認してください。詳細は`docs_api_inspector_comparison_ja.md`を参照してください。
 
 ## 安全化済みAPIログエクスポート
 
@@ -187,7 +218,7 @@ rendererからmain processへ渡すのは、プレビュー生成時のWorkspace
 - `pnpm check:ipc-channel-usage`: 定義済みIPC channelのmain / preload利用カバレッジチェック
 - `pnpm check:ipc-payloads`: 重要IPCのrequest / response / event payload共有契約チェック
 - `pnpm test`: unit test（Vitest）
-- `pnpm test:e2e`: build済みElectronを使用した保存前プレビューE2E
+- `pnpm test:e2e`: build済みElectronを使用した保存・検索・比較E2E
 - `pnpm mobile`: Expo Inspector起動
 - `pnpm mobile:ios`: iOS向けExpo起動
 - `pnpm mobile:android`: Android向けExpo起動
@@ -210,3 +241,4 @@ rendererからmain processへ渡すのは、プレビュー生成時のWorkspace
 - `docs_uiux_spec_ja.md`: UI/UX仕様（開発者向けワークスペースブラウザ）
 - `docs_mvp_execution_plan_ja.md`: MVP次段階の実行計画（Issue/状態定義/PRテンプレート）
 - `docs_multiplatform_strategy_ci_plan_ja.md`: マルチプラットフォーム方針とCI復旧計画（iPhone/iPad対応含む）
+- `docs_api_inspector_comparison_ja.md`: Desktop API通信比較・差分表示・安全化済みJSON保存仕様
