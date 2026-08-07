@@ -5,6 +5,10 @@ import type {
   ApiLogExportSaveRequest,
   ApiLogExportSaveResult
 } from './apiLogExportPreview';
+import type {
+  ApiLogComparisonExportRequest,
+  ApiLogComparisonExportResult
+} from './apiLogComparisonExport';
 import type { ApiLogEntry } from '../contracts';
 import type { StackpilotIpcChannels } from './ipcChannels';
 import type { MobilePairingServerStatus } from './mobilePairing';
@@ -41,6 +45,10 @@ export type StackpilotCriticalIpcInvokeContract = DefineIpcInvokeContract<{
   'api-log:export-discard': IpcInvokeDefinition<
     [request: ApiLogExportDiscardRequest],
     boolean
+  >;
+  'api-log:comparison-export': IpcInvokeDefinition<
+    [request: ApiLogComparisonExportRequest],
+    ApiLogComparisonExportResult
   >;
   'risk:confirmation-respond': IpcInvokeDefinition<
     [confirmationId: string, allow: boolean],

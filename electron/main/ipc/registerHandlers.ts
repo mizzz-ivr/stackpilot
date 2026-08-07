@@ -7,6 +7,7 @@ import { WorkspaceService } from '../services/workspaceService';
 import { BrowserViewManager } from '../services/browserViewManager';
 import { ApiLogService } from '../services/apiLogService';
 import { ApiLogExportService } from '../services/apiLogExportService';
+import { ApiLogComparisonExportService } from '../services/apiLogComparisonExportService';
 import { MobileInspectorServer } from '../services/mobileInspectorServer';
 
 export interface RegisterHandlersOptions {
@@ -23,6 +24,11 @@ export const registerHandlers = (
 ): void => {
   const pendingRiskConfirmations = new Map<string, (allow: boolean) => void>();
   const apiLogExportService = new ApiLogExportService(mainWindow, workspaceService, apiLogService);
+  const apiLogComparisonExportService = new ApiLogComparisonExportService(
+    mainWindow,
+    workspaceService,
+    apiLogService
+  );
 
   apiLogService.setConfirmRiskHandler(
     (request: StackpilotIpcEventPayload<typeof CHANNELS.riskConfirmationRequested>) => {
@@ -103,6 +109,13 @@ export const registerHandlers = (
   ipcMain.handle(
     CHANNELS.apiLogExportDiscard,
     createTypedIpcHandler(CHANNELS.apiLogExportDiscard, (request) => apiLogExportService.discard(request))
+  );
+  ipcMain.handle(
+    CHANNELS.apiLogComparisonExport,
+    createTypedIpcHandler(
+      CHANNELS.apiLogComparisonExport,
+      (request) => apiLogComparisonExportService.save(request)
+    )
   );
 
   ipcMain.handle(

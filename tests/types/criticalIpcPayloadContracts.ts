@@ -1,5 +1,9 @@
 import type { ApiLogEntry } from '../../shared/contracts';
 import type {
+  ApiLogComparisonExportRequest,
+  ApiLogComparisonExportResult
+} from '../../shared/domain/apiLogComparisonExport';
+import type {
   ApiLogExportDiscardRequest,
   ApiLogExportPreviewRequest,
   ApiLogExportPreviewResult,
@@ -19,10 +23,17 @@ const previewRequest: ApiLogExportPreviewRequest = {
 };
 const saveRequest: ApiLogExportSaveRequest = { previewId: 'preview-1' };
 const discardRequest: ApiLogExportDiscardRequest = { previewId: 'preview-1' };
+const comparisonRequest: ApiLogComparisonExportRequest = {
+  workspaceId: 'workspace-1',
+  leftLogId: 'log-left',
+  rightLogId: 'log-right',
+  differencesOnly: true
+};
 
 declare const previewExport: StackpilotIpcInvokeMethod<'api-log:export-preview'>;
 declare const saveExport: StackpilotIpcInvokeMethod<'api-log:export-save'>;
 declare const discardExport: StackpilotIpcInvokeMethod<'api-log:export-discard'>;
+declare const saveComparison: StackpilotIpcInvokeMethod<'api-log:comparison-export'>;
 declare const subscribeApiLog: StackpilotIpcEventSubscriber<'api-log:received'>;
 declare const resolveRisk: StackpilotIpcInvokeMethod<'risk:confirmation-respond'>;
 declare const subscribeRisk: StackpilotIpcEventSubscriber<'risk:confirmation-requested'>;
@@ -34,6 +45,7 @@ declare const subscribeMobilePairingStatus: StackpilotIpcEventSubscriber<'mobile
 const previewResult: Promise<ApiLogExportPreviewResult> = previewExport(previewRequest);
 const saveResult: Promise<ApiLogExportSaveResult> = saveExport(saveRequest);
 const discardResult: Promise<boolean> = discardExport(discardRequest);
+const comparisonResult: Promise<ApiLogComparisonExportResult> = saveComparison(comparisonRequest);
 const resolveResult: Promise<boolean> = resolveRisk('confirmation-1', true);
 const mobilePairingStatusResult: Promise<MobilePairingServerStatus> = getMobilePairingStatus();
 const mobilePairingStartResult: Promise<MobilePairingServerStatus> = startMobilePairing();
@@ -62,6 +74,7 @@ const unsubscribeMobilePairing = subscribeMobilePairingStatus((status) => {
 void previewResult;
 void saveResult;
 void discardResult;
+void comparisonResult;
 void resolveResult;
 void mobilePairingStatusResult;
 void mobilePairingStartResult;
@@ -76,6 +89,13 @@ previewExport(saveRequest);
 saveExport(previewRequest);
 // @ts-expect-error discard requestのpreviewIdは文字列が必要
 void discardExport({ previewId: 123 });
+void saveComparison({
+  workspaceId: 'workspace-1',
+  leftLogId: 'log-left',
+  rightLogId: 'log-right',
+  // @ts-expect-error comparison requestのdifferencesOnlyはbooleanが必要
+  differencesOnly: 'true'
+});
 // @ts-expect-error event handlerのpayload型はApiLogEntry
 subscribeApiLog((entry: string) => entry);
 // @ts-expect-error allowはbooleanが必要

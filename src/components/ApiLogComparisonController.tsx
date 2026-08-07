@@ -5,7 +5,11 @@ import {
 } from '../../shared/domain/apiLogComparison';
 import { toPathLabel } from '../../shared/domain/inspector';
 import { useAppStore } from '../store/appStore';
-import { ApiLogComparisonDialog, CompareIcon } from './ApiLogComparisonDialog';
+import {
+  ApiLogComparisonDialog,
+  CompareIcon,
+  type ApiLogComparisonSaveFeedback
+} from './ApiLogComparisonDialog';
 
 export const ApiLogComparisonController = () => {
   const activeWorkspaceId = useAppStore((state) => state.activeWorkspaceId);
@@ -13,6 +17,9 @@ export const ApiLogComparisonController = () => {
   const toggleInspectorComparison = useAppStore((state) => state.toggleInspectorComparison);
   const clearInspectorComparison = useAppStore((state) => state.clearInspectorComparison);
   const [isOpen, setIsOpen] = useState(false);
+  const [differencesOnly, setDifferencesOnly] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState<ApiLogComparisonSaveFeedback>();
 
   const selectedLog = useMemo(
     () => logs.find((log) => log.id === selectedLogId),
@@ -29,22 +36,79 @@ export const ApiLogComparisonController = () => {
 
   useEffect(() => {
     setIsOpen(false);
+    setDifferencesOnly(false);
+    setSaveFeedback(undefined);
   }, [activeWorkspaceId]);
 
   useEffect(() => {
     if (isOpen && comparisonLogs.length < maxApiLogComparisonTargets) {
       setIsOpen(false);
+      setSaveFeedback(undefined);
     }
   }, [comparisonLogs.length, isOpen]);
 
   const toggleSelectedLog = (): void => {
-    if (!selectedLog) return;
+    if (!selectedLog || isSaving) return;
     toggleInspectorComparison(selectedLog.id);
   };
 
   const clearComparison = (): void => {
+    if (isSaving) return;
     clearInspectorComparison();
     setIsOpen(false);
+    setDifferencesOnly(false);
+    setSaveFeedback(undefined);
+  };
+
+  const closeComparison = (): void => {
+    if (isSaving) return;
+    setIsOpen(false);
+    setSaveFeedback(undefined);
+  };
+
+  const saveComparison = async (): Promise<void> => {
+    if (
+      isSaving ||
+      !activeWorkspaceId ||
+      comparisonLogs.length !== maxApiLogComparisonTargets
+    ) {
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveFeedback(undefined);
+    try {
+      const result = await window.stackpilot.apiLog.saveComparison({
+        workspaceId: activeWorkspaceId,
+        leftLogId: comparisonLogs[0].id,
+        rightLogId: comparisonLogs[1].id,
+        differencesOnly
+      });
+
+      if (result.status === 'cancelled') {
+        setSaveFeedback({
+          kind: 'info',
+          message: '比較レポートの保存をキャンセルしました。'
+        });
+        return;
+      }
+      if (result.status === 'failed') {
+        setSaveFeedback({ kind: 'error', message: result.errorMessage });
+        return;
+      }
+
+      setSaveFeedback({
+        kind: 'success',
+        message: `${result.exportedItemCount}項目（差分${result.differenceCount}件）を保存しました。SHA-256: ${result.artifactSha256} 保存先: ${result.filePath}`
+      });
+    } catch {
+      setSaveFeedback({
+        kind: 'error',
+        message: '比較レポートの保存処理を開始できませんでした。'
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -66,7 +130,7 @@ export const ApiLogComparisonController = () => {
           </div>
           <button
             type="button"
-            disabled={comparisonLogIds.length === 0}
+            disabled={comparisonLogIds.length === 0 || isSaving}
             aria-label="API通信の比較対象をすべて解除"
             className="rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-400 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
             onClick={clearComparison}
@@ -85,8 +149,9 @@ export const ApiLogComparisonController = () => {
                   {log ? (
                     <button
                       type="button"
+                      disabled={isSaving}
                       aria-label={`比較${index === 0 ? 'A' : 'B'}から通信を解除`}
-                      className="text-[10px] text-slate-500 hover:text-slate-200"
+                      className="text-[10px] text-slate-500 hover:text-slate-200 disabled:opacity-40"
                       onClick={() => toggleInspectorComparison(log.id)}
                     >
                       解除
@@ -104,7 +169,7 @@ export const ApiLogComparisonController = () => {
         <div className="mt-2 flex items-center gap-2">
           <button
             type="button"
-            disabled={!selectedLog || (!selectedIsCompared && comparisonIsFull)}
+            disabled={!selectedLog || (!selectedIsCompared && comparisonIsFull) || isSaving}
             aria-pressed={selectedIsCompared}
             aria-label={selectedIsCompared ? '選択中の通信を比較対象から解除' : '選択中の通信を比較対象へ追加'}
             className="min-w-0 flex-1 truncate rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
@@ -120,10 +185,13 @@ export const ApiLogComparisonController = () => {
           </button>
           <button
             type="button"
-            disabled={comparisonLogs.length !== maxApiLogComparisonTargets}
+            disabled={comparisonLogs.length !== maxApiLogComparisonTargets || isSaving}
             aria-label="選択した2件のAPI通信を比較"
             className="rounded-lg bg-cyan-700 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-600 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
-            onClick={() => setIsOpen(true)}
+            onClick={() => {
+              setSaveFeedback(undefined);
+              setIsOpen(true);
+            }}
           >
             比較を開く
           </button>
@@ -134,9 +202,17 @@ export const ApiLogComparisonController = () => {
         <ApiLogComparisonDialog
           left={comparisonLogs[0]}
           right={comparisonLogs[1]}
+          differencesOnly={differencesOnly}
+          isSaving={isSaving}
+          saveFeedback={saveFeedback}
+          onDifferencesOnlyChange={(next) => {
+            setDifferencesOnly(next);
+            setSaveFeedback(undefined);
+          }}
+          onSave={() => void saveComparison()}
           onRemove={toggleInspectorComparison}
           onClear={clearComparison}
-          onClose={() => setIsOpen(false)}
+          onClose={closeComparison}
         />
       ) : null}
     </>
