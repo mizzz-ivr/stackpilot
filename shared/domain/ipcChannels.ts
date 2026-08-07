@@ -14,6 +14,7 @@ export type StackpilotIpcChannels = {
   readonly apiLogExportSave: 'api-log:export-save';
   readonly apiLogExportDiscard: 'api-log:export-discard';
   readonly apiLogComparisonExport: 'api-log:comparison-export';
+  readonly apiLogReplay: 'api-log:replay';
   readonly apiLogReceived: 'api-log:received';
   readonly riskConfirmationRequested: 'risk:confirmation-requested';
   readonly riskConfirmationRespond: 'risk:confirmation-respond';
@@ -41,6 +42,7 @@ export const stackpilotIpcChannelUsages = {
   apiLogExportSave: 'invoke',
   apiLogExportDiscard: 'invoke',
   apiLogComparisonExport: 'invoke',
+  apiLogReplay: 'invoke',
   apiLogReceived: 'event',
   riskConfirmationRequested: 'event',
   riskConfirmationRespond: 'invoke',
