@@ -8,10 +8,16 @@ import { BrowserViewManager } from '../services/browserViewManager';
 import { ApiLogService } from '../services/apiLogService';
 import { ApiLogExportService } from '../services/apiLogExportService';
 import { ApiLogComparisonExportService } from '../services/apiLogComparisonExportService';
+import {
+  createRequestReplayExecutor,
+  RequestReplayService,
+  type RequestReplayExecutor
+} from '../services/requestReplayService';
 import { MobileInspectorServer } from '../services/mobileInspectorServer';
 
 export interface RegisterHandlersOptions {
   disableBrowserNavigation?: boolean;
+  requestReplayExecutor?: RequestReplayExecutor;
 }
 
 export const registerHandlers = (
@@ -28,6 +34,12 @@ export const registerHandlers = (
     mainWindow,
     workspaceService,
     apiLogService
+  );
+  const requestReplayService = new RequestReplayService(
+    mainWindow,
+    workspaceService,
+    apiLogService,
+    options.requestReplayExecutor ?? createRequestReplayExecutor(browserViewManager)
   );
 
   apiLogService.setConfirmRiskHandler(
@@ -116,6 +128,10 @@ export const registerHandlers = (
       CHANNELS.apiLogComparisonExport,
       (request) => apiLogComparisonExportService.save(request)
     )
+  );
+  ipcMain.handle(
+    CHANNELS.apiLogReplay,
+    createTypedIpcHandler(CHANNELS.apiLogReplay, (request) => requestReplayService.replay(request))
   );
 
   ipcMain.handle(
