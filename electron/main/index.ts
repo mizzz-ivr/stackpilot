@@ -62,7 +62,10 @@ const createWindow = async (): Promise<void> => {
   });
 
   registerHandlers(mainWindow, workspaceService, browserViewManager, apiLogService, mobileInspectorServer, {
-    disableBrowserNavigation: e2eMode
+    disableBrowserNavigation: e2eMode,
+    requestReplayExecutor: e2eMode
+      ? async () => ({ status: 'replayed', responseStatus: 204, durationMs: 42 })
+      : undefined
   });
 
   mainWindow.on('resize', () => browserViewManager.resize(mainWindow!));

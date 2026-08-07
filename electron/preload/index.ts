@@ -23,6 +23,7 @@ const CHANNELS = {
   apiLogExportSave: 'api-log:export-save',
   apiLogExportDiscard: 'api-log:export-discard',
   apiLogComparisonExport: 'api-log:comparison-export',
+  apiLogReplay: 'api-log:replay',
   apiLogReceived: 'api-log:received',
   riskConfirmationRequested: 'risk:confirmation-requested',
   riskConfirmationRespond: 'risk:confirmation-respond',
@@ -43,6 +44,9 @@ const discardApiLogExport: StackpilotIpcInvokeMethod<typeof CHANNELS.apiLogExpor
 
 const saveApiLogComparison: StackpilotIpcInvokeMethod<typeof CHANNELS.apiLogComparisonExport> =
   (request) => ipcRenderer.invoke(CHANNELS.apiLogComparisonExport, request);
+
+const replayApiLog: StackpilotIpcInvokeMethod<typeof CHANNELS.apiLogReplay> =
+  (request) => ipcRenderer.invoke(CHANNELS.apiLogReplay, request);
 
 const subscribeApiLog: StackpilotIpcEventSubscriber<
   typeof CHANNELS.apiLogReceived
@@ -117,6 +121,7 @@ const api = {
     saveExport: saveApiLogExport,
     discardExportPreview: discardApiLogExport,
     saveComparison: saveApiLogComparison,
+    replay: replayApiLog,
     subscribe: subscribeApiLog
   },
   mobilePairing: {

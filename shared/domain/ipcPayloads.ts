@@ -9,6 +9,7 @@ import type {
   ApiLogComparisonExportRequest,
   ApiLogComparisonExportResult
 } from './apiLogComparisonExport';
+import type { RequestReplayRequest, RequestReplayResult } from './requestReplay';
 import type { ApiLogEntry } from '../contracts';
 import type { StackpilotIpcChannels } from './ipcChannels';
 import type { MobilePairingServerStatus } from './mobilePairing';
@@ -49,6 +50,10 @@ export type StackpilotCriticalIpcInvokeContract = DefineIpcInvokeContract<{
   'api-log:comparison-export': IpcInvokeDefinition<
     [request: ApiLogComparisonExportRequest],
     ApiLogComparisonExportResult
+  >;
+  'api-log:replay': IpcInvokeDefinition<
+    [request: RequestReplayRequest],
+    RequestReplayResult
   >;
   'risk:confirmation-respond': IpcInvokeDefinition<
     [confirmationId: string, allow: boolean],

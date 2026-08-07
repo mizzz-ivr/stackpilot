@@ -15,6 +15,7 @@ import type {
   StackpilotIpcInvokeMethod
 } from '../../shared/domain/ipcPayloads';
 import type { MobilePairingServerStatus } from '../../shared/domain/mobilePairing';
+import type { RequestReplayRequest, RequestReplayResult } from '../../shared/domain/requestReplay';
 
 const previewRequest: ApiLogExportPreviewRequest = {
   workspaceId: 'workspace-1',
@@ -29,11 +30,16 @@ const comparisonRequest: ApiLogComparisonExportRequest = {
   rightLogId: 'log-right',
   differencesOnly: true
 };
+const replayRequest: RequestReplayRequest = {
+  workspaceId: 'workspace-1',
+  logId: 'log-1'
+};
 
 declare const previewExport: StackpilotIpcInvokeMethod<'api-log:export-preview'>;
 declare const saveExport: StackpilotIpcInvokeMethod<'api-log:export-save'>;
 declare const discardExport: StackpilotIpcInvokeMethod<'api-log:export-discard'>;
 declare const saveComparison: StackpilotIpcInvokeMethod<'api-log:comparison-export'>;
+declare const replayApiLog: StackpilotIpcInvokeMethod<'api-log:replay'>;
 declare const subscribeApiLog: StackpilotIpcEventSubscriber<'api-log:received'>;
 declare const resolveRisk: StackpilotIpcInvokeMethod<'risk:confirmation-respond'>;
 declare const subscribeRisk: StackpilotIpcEventSubscriber<'risk:confirmation-requested'>;
@@ -46,6 +52,7 @@ const previewResult: Promise<ApiLogExportPreviewResult> = previewExport(previewR
 const saveResult: Promise<ApiLogExportSaveResult> = saveExport(saveRequest);
 const discardResult: Promise<boolean> = discardExport(discardRequest);
 const comparisonResult: Promise<ApiLogComparisonExportResult> = saveComparison(comparisonRequest);
+const replayResult: Promise<RequestReplayResult> = replayApiLog(replayRequest);
 const resolveResult: Promise<boolean> = resolveRisk('confirmation-1', true);
 const mobilePairingStatusResult: Promise<MobilePairingServerStatus> = getMobilePairingStatus();
 const mobilePairingStartResult: Promise<MobilePairingServerStatus> = startMobilePairing();
@@ -75,6 +82,7 @@ void previewResult;
 void saveResult;
 void discardResult;
 void comparisonResult;
+void replayResult;
 void resolveResult;
 void mobilePairingStatusResult;
 void mobilePairingStartResult;
@@ -95,6 +103,11 @@ void saveComparison({
   rightLogId: 'log-right',
   // @ts-expect-error comparison requestのdifferencesOnlyはbooleanが必要
   differencesOnly: 'true'
+});
+void replayApiLog({
+  workspaceId: 'workspace-1',
+  // @ts-expect-error Request ReplayのlogIdは文字列が必要
+  logId: 123
 });
 // @ts-expect-error event handlerのpayload型はApiLogEntry
 subscribeApiLog((entry: string) => entry);
