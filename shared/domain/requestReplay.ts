@@ -46,6 +46,7 @@ export type RequestReplayResult =
         | 'workspace-mismatch'
         | 'not-replayable'
         | 'workspace-not-active'
+        | 'replay-in-progress'
         | 'dialog-unavailable'
         | 'execution-failed';
       errorMessage: string;
