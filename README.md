@@ -29,7 +29,7 @@ Expo Goで表示されたQRコードを読み込んで確認します。`EXPO_PU
 
 ### Electron E2E
 
-保存前プレビュー、検索・ピン留め、API通信比較の重要操作はPlaywrightでElectronを起動して検証します。テストはbuild済みのrenderer・preload・main processを使用します。
+保存前プレビュー、検索・ピン留め、API通信比較、Request Replayの重要操作はPlaywrightでElectronを起動して検証します。テストはbuild済みのrenderer・preload・main processを使用します。
 
 ```bash
 pnpm build
@@ -43,7 +43,7 @@ pnpm build
 xvfb-run -a pnpm test:e2e
 ```
 
-E2E実行時は専用の一時`userData`ディレクトリを作成し、固定Workspaceと固定APIログを初期化します。`STACKPILOT_E2E=1`はPlaywright fixtureからだけ設定され、通常起動のWorkspaceや設定には影響しません。native save dialogはOS依存を避けるためmain processで一時保存先へ置き換えます。
+E2E実行時は専用の一時`userData`ディレクトリを作成し、固定Workspaceと固定APIログを初期化します。`STACKPILOT_E2E=1`はPlaywright fixtureからだけ設定され、通常起動のWorkspaceや設定には影響しません。native save dialogはOS依存を避けるためmain processで一時保存先へ置き換えます。Request ReplayはCIから外部ネットワークへ送信しないよう固定executorを注入し、renderer・preload・main processの操作経路と結果表示を検証します。実BrowserViewでの送信は実機確認対象です。
 
 失敗時は`test-results/e2e`へスクリーンショットとPlaywright traceを出力します。成功時は証跡ファイルを残しません。
 
@@ -82,12 +82,13 @@ channel追加時は、共有の文字列literal型・利用種別・main実装�
 
 ### 重要IPC payload契約
 
-`shared/domain/ipcPayloads.ts`では、影響の大きいIPCから段階的にrequest・response・event payload型を共有しています。現在の対象は次の11 channelです。
+`shared/domain/ipcPayloads.ts`では、影響の大きいIPCから段階的にrequest・response・event payload型を共有しています。現在の対象は次の12 channelです。
 
 - `api-log:export-preview`
 - `api-log:export-save`
 - `api-log:export-discard`
 - `api-log:comparison-export`
+- `api-log:replay`
 - `api-log:received`
 - `risk:confirmation-requested`
 - `risk:confirmation-respond`
@@ -104,7 +105,7 @@ pnpm check:ipc-payloads
 
 sandbox preloadは共有契約を`import type`でのみ参照します。runtimeのローカルmodule読み込みは追加しません。build済みpreloadの起動はElectron E2Eで確認します。
 
-共有payload型はcompile-timeの整合性を保証するものであり、信頼境界のruntime validationを置き換えません。APIログ保存requestはmain processの`ApiLogExportService`、比較レポート保存requestは`ApiLogComparisonExportService`で`unknown`として受け取り、各validatorで検証します。APIログ受信eventとMobile pairing statusはmain process内部で生成されるため、共有型追加だけを理由に新しいruntime validatorは追加しません。
+共有payload型はcompile-timeの整合性を保証するものであり、信頼境界のruntime validationを置き換えません。APIログ保存requestはmain processの`ApiLogExportService`、比較レポート保存requestは`ApiLogComparisonExportService`、Request Replay requestは`RequestReplayService`で`unknown`として受け取り、各validatorと対象ログ再取得で検証します。APIログ受信eventとMobile pairing statusはmain process内部で生成されるため、共有型追加だけを理由に新しいruntime validatorは追加しません。
 
 対象IPCの型を変更するときは、次を同じPRで確認してください。
 
@@ -116,6 +117,37 @@ sandbox preloadは共有契約を`import type`でのみ参照します。runtime
 - `pnpm check:ipc-payloads`
 
 全IPCを一括移行せず、既存挙動を維持しながら影響の大きい経路から段階的に追加します。
+
+## 安全なRequest Replay
+
+Desktop API Inspectorでは、選択した既存通信を安全な範囲に限定して再実行できます。MVPの対象は`GET` / `HEAD`だけです。
+
+再実行できる通信は次の条件をすべて満たす必要があります。
+
+- Methodが`GET`または`HEAD`
+- Request bodyを持たない
+- URLがHTTP / HTTPS
+- URLに`user:password@host`形式のcredentialsを含まない
+- 対象ログが現在のWorkspaceに存在する
+- 同じWorkspaceのBrowserViewが現在アクティブである
+
+詳細パネルの`Request Replayを確認`から実行前プレビューを開き、Method、URL、Workspace、安全ルールを確認してから再実行します。POST / PUT / PATCH / DELETE等は操作を無効化し、対象外理由を表示します。
+
+rendererからmain processへ渡す値はWorkspace IDとログIDだけです。URL、Method、headers、bodyはrendererから指定できません。main processが元ログを再取得し、Replay可否を再検証します。
+
+元通信の次の情報はコピーしません。
+
+- Authorization / Cookie
+- API keyやその他のcustom header
+- Request body
+
+実行は現在アクティブな同一WorkspaceのBrowserView isolated worldで行い、`credentials: include`、`cache: no-store`、`redirect: follow`を使用します。そのため元Cookie headerはコピーしませんが、現在のブラウザセッションCookieが対象サイトの通常のfetchポリシーに従って送信される可能性があります。
+
+PROD Workspaceでは、rendererの実行前プレビューに加えてmain processがElectronネイティブ確認ダイアログを表示し、明示的に再実行を選択した場合だけ送信します。同じログの多重実行はmain processでも拒否します。
+
+成功時はHTTP statusとdurationを表示します。実BrowserViewのReplay通信は既存の`webRequest` / response body capture経路へ流れるため、通常のAPIログとして確認できます。ネットワーク例外のraw文字列はrendererへ返しません。
+
+Request body再送、元header再利用、URL/header編集、POST等の変更系method、Mobile InspectorからのReplayは対象外です。詳細は`docs_request_replay_ja.md`を参照してください。
 
 ## API通信比較と安全化済み比較レポート
 
@@ -218,7 +250,7 @@ rendererからmain processへ渡すのは、プレビュー生成時のWorkspace
 - `pnpm check:ipc-channel-usage`: 定義済みIPC channelのmain / preload利用カバレッジチェック
 - `pnpm check:ipc-payloads`: 重要IPCのrequest / response / event payload共有契約チェック
 - `pnpm test`: unit test（Vitest）
-- `pnpm test:e2e`: build済みElectronを使用した保存・検索・比較E2E
+- `pnpm test:e2e`: build済みElectronを使用した保存・検索・比較・Request Replay E2E
 - `pnpm mobile`: Expo Inspector起動
 - `pnpm mobile:ios`: iOS向けExpo起動
 - `pnpm mobile:android`: Android向けExpo起動
@@ -242,3 +274,4 @@ rendererからmain processへ渡すのは、プレビュー生成時のWorkspace
 - `docs_mvp_execution_plan_ja.md`: MVP次段階の実行計画（Issue/状態定義/PRテンプレート）
 - `docs_multiplatform_strategy_ci_plan_ja.md`: マルチプラットフォーム方針とCI復旧計画（iPhone/iPad対応含む）
 - `docs_api_inspector_comparison_ja.md`: Desktop API通信比較・差分表示・安全化済みJSON保存仕様
+- `docs_request_replay_ja.md`: Desktop API Inspectorの安全なRequest Replay仕様
