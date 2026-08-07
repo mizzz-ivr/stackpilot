@@ -18,6 +18,7 @@ type ReplayFeedback =
 export const RequestReplayDialog = ({ workspace, log, onClose }: RequestReplayDialogProps) => {
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
+  const isExecutingRef = useRef(false);
   const [isExecuting, setIsExecuting] = useState(false);
   const [feedback, setFeedback] = useState<ReplayFeedback>();
   const eligibility = useMemo(() => evaluateRequestReplayEligibility(log), [log]);
@@ -28,9 +29,13 @@ export const RequestReplayDialog = ({ workspace, log, onClose }: RequestReplayDi
   }, [onClose]);
 
   useEffect(() => {
+    isExecutingRef.current = isExecuting;
+  }, [isExecuting]);
+
+  useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !isExecuting) {
+      if (event.key === 'Escape' && !isExecutingRef.current) {
         event.preventDefault();
         onCloseRef.current();
         return;
@@ -57,10 +62,11 @@ export const RequestReplayDialog = ({ workspace, log, onClose }: RequestReplayDi
       document.removeEventListener('keydown', handleKeyDown);
       previousFocus?.focus();
     };
-  }, [isExecuting]);
+  }, []);
 
   const executeReplay = async (): Promise<void> => {
-    if (!eligibility.replayable || isExecuting) return;
+    if (!eligibility.replayable || isExecutingRef.current) return;
+    isExecutingRef.current = true;
     setIsExecuting(true);
     setFeedback(undefined);
     try {
@@ -81,6 +87,7 @@ export const RequestReplayDialog = ({ workspace, log, onClose }: RequestReplayDi
     } catch {
       setFeedback({ kind: 'error', message: 'Request Replayを実行できませんでした。' });
     } finally {
+      isExecutingRef.current = false;
       setIsExecuting(false);
     }
   };
@@ -89,7 +96,7 @@ export const RequestReplayDialog = ({ workspace, log, onClose }: RequestReplayDi
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm"
       onMouseDown={(event) => {
-        if (!isExecuting && event.target === event.currentTarget) onClose();
+        if (!isExecutingRef.current && event.target === event.currentTarget) onClose();
       }}
     >
       <div
