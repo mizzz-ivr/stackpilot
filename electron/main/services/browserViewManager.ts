@@ -1,9 +1,24 @@
 import { BrowserView, BrowserWindow, session } from 'electron';
 import type { Workspace } from '../../../shared/contracts';
+import type { RequestReplayMethod } from '../../../shared/domain/requestReplay';
 import { ApiLogService } from './apiLogService';
 import { ResponseBodyCaptureService } from './responseBodyCaptureService';
 
 type ActiveTab = { view: BrowserView; workspaceId: string; tabId: string };
+
+export type BrowserRequestReplayResult =
+  | {
+      status: 'replayed';
+      responseStatus: number;
+      durationMs: number;
+    }
+  | {
+      status: 'failed';
+      durationMs: number;
+    }
+  | {
+      status: 'workspace-not-active';
+    };
 
 export class BrowserViewManager {
   private activeTab?: ActiveTab;
@@ -57,6 +72,58 @@ export class BrowserViewManager {
     this.activeTab?.view.webContents.openDevTools({ mode: 'detach' });
   }
 
+  async replaySafeRequest(
+    workspaceId: string,
+    method: RequestReplayMethod,
+    url: string
+  ): Promise<BrowserRequestReplayResult> {
+    const active = this.activeTab;
+    if (
+      !active ||
+      active.workspaceId !== workspaceId ||
+      active.view.webContents.isDestroyed()
+    ) {
+      return { status: 'workspace-not-active' };
+    }
+
+    const code = `
+      (async () => {
+        const startedAt = performance.now();
+        try {
+          const response = await fetch(${JSON.stringify(url)}, {
+            method: ${JSON.stringify(method)},
+            credentials: 'include',
+            cache: 'no-store',
+            redirect: 'follow'
+          });
+          return {
+            status: 'replayed',
+            responseStatus: response.status,
+            durationMs: Math.max(0, Math.round(performance.now() - startedAt))
+          };
+        } catch {
+          return {
+            status: 'failed',
+            durationMs: Math.max(0, Math.round(performance.now() - startedAt))
+          };
+        }
+      })()
+    `;
+
+    try {
+      const result = await active.view.webContents.executeJavaScriptInIsolatedWorld(
+        1001,
+        [{ code }],
+        true
+      ) as unknown;
+      return isBrowserReplayExecutionResult(result)
+        ? result
+        : { status: 'failed', durationMs: 0 };
+    } catch {
+      return { status: 'failed', durationMs: 0 };
+    }
+  }
+
   resize(window: BrowserWindow, view?: BrowserView): void {
     const target = view ?? this.activeTab?.view;
     if (!target) return;
@@ -69,3 +136,23 @@ export class BrowserViewManager {
     return this.activeTab?.view.webContents.id;
   }
 }
+
+const isBrowserReplayExecutionResult = (
+  value: unknown
+): value is Exclude<BrowserRequestReplayResult, { status: 'workspace-not-active' }> => {
+  if (typeof value !== 'object' || value === null) return false;
+  const result = value as Record<string, unknown>;
+  if (result.status === 'replayed') {
+    return (
+      typeof result.responseStatus === 'number' &&
+      Number.isFinite(result.responseStatus) &&
+      typeof result.durationMs === 'number' &&
+      Number.isFinite(result.durationMs)
+    );
+  }
+  return (
+    result.status === 'failed' &&
+    typeof result.durationMs === 'number' &&
+    Number.isFinite(result.durationMs)
+  );
+};
