@@ -14,6 +14,7 @@ export const CHANNELS = {
   apiLogExportSave: 'api-log:export-save',
   apiLogExportDiscard: 'api-log:export-discard',
   apiLogComparisonExport: 'api-log:comparison-export',
+  apiLogReplay: 'api-log:replay',
   apiLogReceived: 'api-log:received',
   riskConfirmationRequested: 'risk:confirmation-requested',
   riskConfirmationRespond: 'risk:confirmation-respond',
