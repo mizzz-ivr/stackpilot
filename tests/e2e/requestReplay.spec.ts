@@ -32,7 +32,8 @@ test('GET通信のqueryを編集して安全に再実行し、POST通信は拒�
   await expect(firstQueryValue).toHaveValue('public');
 
   await firstQueryValue.fill('edited');
-  await expect(dialog.getByText('1', { exact: true }).nth(1)).toBeVisible();
+  const changedSummary = dialog.getByText('変更', { exact: true }).locator('..');
+  await expect(changedSummary.getByText('1', { exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: 'Query parameterを追加', exact: true }).click();
 
   await expect(replayButton).toBeDisabled();
@@ -42,6 +43,10 @@ test('GET通信のqueryを編集して安全に再実行し、POST通信は拒�
   await expect(dialog.getByRole('textbox', { name: 'Query値 2', exact: true })).toHaveValue('');
   await expect(replayButton).toBeEnabled();
   await expect(dialog.getByText(editedReplayUrl, { exact: true })).toBeVisible();
+
+  const addedSummary = dialog.getByText('追加', { exact: true }).locator('..');
+  await expect(addedSummary.getByText('1', { exact: true })).toBeVisible();
+  await expect(changedSummary.getByText('1', { exact: true })).toBeVisible();
 
   await replayButton.click();
   await expect(dialog.getByText(/再実行しました。HTTP 204 \/ 42ms/)).toBeVisible();
