@@ -141,6 +141,12 @@ export const validateRequestReplayQueryEntries = (
   }
 
   for (const entry of entries) {
+    if (entry.name.length === 0) {
+      return {
+        valid: false,
+        errorMessage: 'Query名は空にできません。'
+      };
+    }
     if (entry.name.length > requestReplayQueryLimits.maxNameLength) {
       return {
         valid: false,
