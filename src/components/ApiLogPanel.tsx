@@ -26,12 +26,14 @@ import {
   formatResponseBodyUnavailableReason,
   type SafeResponseBodyPreview
 } from '../../shared/domain/responseBody';
+import { evaluateRequestReplayEligibility } from '../../shared/domain/requestReplay';
 import {
   ApiLogExportPreviewDialog,
   type ApiLogExportFeedback,
   type ApiLogExportMaskingDraft
 } from './ApiLogExportPreviewDialog';
 import { ApiLogFilterToolbar, PinIcon } from './ApiLogFilterToolbar';
+import { RequestReplayDialog } from './RequestReplayDialog';
 import { selectFilteredLogs, selectSelectedLog, useAppStore } from '../store/appStore';
 
 const HeaderList = ({ entries, emptyLabel }: { entries: HeaderEntry[]; emptyLabel: string }) => {
@@ -136,9 +138,19 @@ const ResponseBodyBlock = ({
   );
 };
 
-const LogDetails = ({ log }: { log?: NetworkLog }) => {
+const LogDetails = ({
+  log,
+  onOpenReplay
+}: {
+  log?: NetworkLog;
+  onOpenReplay: (logId: string) => void;
+}) => {
   const requestHeaders = useMemo(() => toHeaderEntries(log?.requestHeaders ?? {}), [log?.requestHeaders]);
   const responseHeaders = useMemo(() => toHeaderEntries(log?.responseHeaders ?? {}), [log?.responseHeaders]);
+  const replayEligibility = useMemo(
+    () => (log ? evaluateRequestReplayEligibility(log) : undefined),
+    [log]
+  );
 
   if (!log) {
     return (
@@ -159,6 +171,22 @@ const LogDetails = ({ log }: { log?: NetworkLog }) => {
         </div>
         <p className="break-all text-xs text-slate-200">{log.url}</p>
         <p className="text-[11px] text-slate-500">開始時刻: {formatStartedAtLabel(log.startedAt)}</p>
+        <div className="space-y-1 pt-1">
+          <button
+            type="button"
+            disabled={!replayEligibility?.replayable}
+            aria-label="選択中のAPI通信のRequest Replayを確認"
+            className="rounded-lg border border-cyan-800/70 bg-cyan-950/30 px-3 py-1.5 text-xs font-medium text-cyan-200 hover:bg-cyan-950/60 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900 disabled:text-slate-600"
+            onClick={() => onOpenReplay(log.id)}
+          >
+            Request Replayを確認
+          </button>
+          {!replayEligibility?.replayable ? (
+            <p className="text-[10px] leading-4 text-amber-300/80">{replayEligibility?.reasonMessage}</p>
+          ) : (
+            <p className="text-[10px] leading-4 text-slate-500">GET / HEADのみ。元header・bodyはコピーせず、実行前に内容を確認します。</p>
+          )}
+        </div>
       </section>
 
       <section className="space-y-2">
@@ -185,6 +213,7 @@ const LogDetails = ({ log }: { log?: NetworkLog }) => {
 };
 
 export const ApiLogPanel = () => {
+  const activeWorkspace = useAppStore((state) => state.activeWorkspace);
   const activeWorkspaceId = useAppStore((state) => state.activeWorkspaceId);
   const { filter, isLoading, errorMessage, logs, selectedLogId, pinnedLogIds } = useAppStore((state) => state.inspector);
   const setInspectorFilter = useAppStore((state) => state.setInspectorFilter);
@@ -204,8 +233,13 @@ export const ApiLogPanel = () => {
   const [maskingDraft, setMaskingDraft] = useState<ApiLogExportMaskingDraft>(createEmptyMaskingDraft);
   const [exportFeedback, setExportFeedback] = useState<ApiLogExportFeedback>();
   const [previewFeedback, setPreviewFeedback] = useState<ApiLogExportFeedback>();
+  const [replayLogId, setReplayLogId] = useState<string>();
 
   const pinnedIds = useMemo(() => new Set(pinnedLogIds), [pinnedLogIds]);
+  const replayLog = useMemo(
+    () => (replayLogId ? logs.find((log) => log.id === replayLogId) : undefined),
+    [logs, replayLogId]
+  );
   const exportEligibleCount = useMemo(
     () => logs.filter((log) => filter.kind === 'all' || log.resourceType === filter.kind).length,
     [filter.kind, logs]
@@ -230,6 +264,14 @@ export const ApiLogPanel = () => {
     return !areMaskingRulesEqual(parsedMaskingRules.rules, exportPreview.customMaskingRules);
   }, [exportPreview, parsedMaskingRules]);
   const isPreviewBusy = savingPreview || refreshingPreview;
+
+  useEffect(() => {
+    setReplayLogId(undefined);
+  }, [activeWorkspaceId]);
+
+  useEffect(() => {
+    if (replayLogId && !replayLog) setReplayLogId(undefined);
+  }, [replayLog, replayLogId]);
 
   useEffect(() => {
     setExportPreview((current) => {
@@ -518,7 +560,7 @@ export const ApiLogPanel = () => {
           </section>
 
           <section className="max-h-[52%] min-h-48 overflow-auto" aria-label="選択中のAPI通信詳細">
-            <LogDetails log={selectedLog} />
+            <LogDetails log={selectedLog} onOpenReplay={setReplayLogId} />
           </section>
         </div>
       </aside>
@@ -537,6 +579,14 @@ export const ApiLogPanel = () => {
           onClearRules={() => void clearCustomMaskingRules()}
           onClose={closeExportPreview}
           onSave={() => void saveExportPreview()}
+        />
+      ) : null}
+
+      {replayLog && activeWorkspace && replayLog.workspaceId === activeWorkspace.id ? (
+        <RequestReplayDialog
+          workspace={activeWorkspace}
+          log={replayLog}
+          onClose={() => setReplayLogId(undefined)}
         />
       ) : null}
     </>

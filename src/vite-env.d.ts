@@ -26,6 +26,7 @@ declare global {
         saveExport: StackpilotIpcInvokeMethod<'api-log:export-save'>;
         discardExportPreview: StackpilotIpcInvokeMethod<'api-log:export-discard'>;
         saveComparison: StackpilotIpcInvokeMethod<'api-log:comparison-export'>;
+        replay: StackpilotIpcInvokeMethod<'api-log:replay'>;
         subscribe: StackpilotIpcEventSubscriber<'api-log:received'>;
       };
       mobilePairing: {
