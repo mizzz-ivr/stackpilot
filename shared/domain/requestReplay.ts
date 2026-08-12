@@ -50,6 +50,7 @@ export type RequestReplayResult =
       status: 'replayed';
       responseStatus: number;
       durationMs: number;
+      replayedLogId?: string;
     }
   | {
       status: 'cancelled';
