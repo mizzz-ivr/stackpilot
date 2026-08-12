@@ -120,7 +120,7 @@ sandbox preloadは共有契約を`import type`でのみ参照します。runtime
 
 ## 安全なRequest Replay
 
-Desktop API Inspectorでは、選択した既存通信を安全な範囲に限定して再実行できます。MVPの対象は`GET` / `HEAD`だけです。
+Desktop API Inspectorでは、選択した既存通信を安全な範囲に限定して再実行できます。対象は`GET` / `HEAD`だけです。
 
 再実行できる通信は次の条件をすべて満たす必要があります。
 
@@ -131,9 +131,23 @@ Desktop API Inspectorでは、選択した既存通信を安全な範囲に限�
 - 対象ログが現在のWorkspaceに存在する
 - 同じWorkspaceのBrowserViewが現在アクティブである
 
-詳細パネルの`Request Replayを確認`から実行前プレビューを開き、Method、URL、Workspace、安全ルールを確認してから再実行します。POST / PUT / PATCH / DELETE等は操作を無効化し、対象外理由を表示します。
+詳細パネルの`Request Replayを確認`から実行前プレビューを開き、Method、Workspace、元URL、安全ルールを確認してから再実行します。POST / PUT / PATCH / DELETE等は操作を無効化し、対象外理由を表示します。
 
-rendererからmain processへ渡す値はWorkspace IDとログIDだけです。URL、Method、headers、bodyはrendererから指定できません。main processが元ログを再取得し、Replay可否を再検証します。
+### Query editor
+
+Replayプレビューでは、元URLのoriginとpathnameを固定したままquery parameterだけをname / value単位で編集できます。
+
+- 既存queryのname / value編集
+- queryの追加・削除
+- 同名parameterの複数指定
+- `flag=`のような空value
+- 元queryへのリセット
+- 元URL / Replay URLの同時確認
+- 追加 / 変更 / 削除件数の確認
+
+queryは最大50件、nameは必須で最大128文字、valueは最大2,048文字、URLエンコード後のquery全体は最大8,192文字です。制御文字は使用できません。fragmentはReplay時に除去します。
+
+rendererからmain processへ渡す値はWorkspace ID、source log ID、query entryのname/value配列だけです。完全URL、Method、origin、pathname、headers、bodyはrendererから指定できません。main processが元ログを再取得してReplay可否とqueryを再検証し、元ログURLからorigin/pathを再構築します。IPC payloadへ余計な`url`を混ぜても使用しません。
 
 元通信の次の情報はコピーしません。
 
@@ -147,7 +161,7 @@ PROD Workspaceでは、rendererの実行前プレビューに加えてmain proce
 
 成功時はHTTP statusとdurationを表示します。実BrowserViewのReplay通信は既存の`webRequest` / response body capture経路へ流れるため、通常のAPIログとして確認できます。ネットワーク例外のraw文字列はrendererへ返しません。
 
-Request body再送、元header再利用、URL/header編集、POST等の変更系method、Mobile InspectorからのReplayは対象外です。詳細は`docs_request_replay_ja.md`を参照してください。
+Request body再送、元header再利用、origin/pathの任意編集、POST等の変更系method、Mobile InspectorからのReplay、Replay結果との自動比較は対象外です。詳細は`docs_request_replay_ja.md`を参照してください。
 
 ## API通信比較と安全化済み比較レポート
 

@@ -32,7 +32,11 @@ const comparisonRequest: ApiLogComparisonExportRequest = {
 };
 const replayRequest: RequestReplayRequest = {
   workspaceId: 'workspace-1',
-  logId: 'log-1'
+  logId: 'log-1',
+  queryEntries: [
+    { name: 'page', value: '2' },
+    { name: 'flag', value: '' }
+  ]
 };
 
 declare const previewExport: StackpilotIpcInvokeMethod<'api-log:export-preview'>;
@@ -108,6 +112,17 @@ void replayApiLog({
   workspaceId: 'workspace-1',
   // @ts-expect-error Request ReplayのlogIdは文字列が必要
   logId: 123
+});
+void replayApiLog({
+  workspaceId: 'workspace-1',
+  logId: 'log-1',
+  queryEntries: [
+    {
+      name: 'page',
+      // @ts-expect-error query valueは文字列が必要
+      value: 2
+    }
+  ]
 });
 // @ts-expect-error event handlerのpayload型はApiLogEntry
 subscribeApiLog((entry: string) => entry);

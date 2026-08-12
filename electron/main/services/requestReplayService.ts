@@ -1,8 +1,10 @@
 import { dialog, type BrowserWindow } from 'electron';
 import { isProdEnvironment } from '../../../shared/domain/environment';
 import {
+  createRequestReplayTargetUrl,
   evaluateRequestReplayEligibility,
   isRequestReplayRequest,
+  validateRequestReplayQueryEntries,
   type RequestReplayMethod,
   type RequestReplayResult
 } from '../../../shared/domain/requestReplay';
@@ -63,6 +65,14 @@ export class RequestReplayService {
       );
     }
 
+    if (request.queryEntries) {
+      const queryValidation = validateRequestReplayQueryEntries(request.queryEntries);
+      if (!queryValidation.valid) {
+        return failed('invalid-query', queryValidation.errorMessage);
+      }
+    }
+
+    const targetUrl = createRequestReplayTargetUrl(log.url, request.queryEntries);
     const replayKey = `${workspace.id}:${log.id}`;
     if (this.inFlight.has(replayKey)) {
       return failed('replay-in-progress', 'この通信はすでに再実行中です。');
@@ -81,6 +91,7 @@ export class RequestReplayService {
           message: `PROD Workspaceで${eligibility.method}通信を再実行します`,
           detail: [
             '元ログのAuthorization・Cookie・custom header・Request bodyはコピーしません。',
+            'originとpathは元通信からmain processが再構築し、queryだけを編集内容へ置き換えます。',
             'ただし、現在のブラウザセッションのCookieが通常のfetch挙動として送信される可能性があります。',
             '意図した通信であることを確認できる場合だけ再実行してください。'
           ].join('\n'),
@@ -97,7 +108,7 @@ export class RequestReplayService {
       const result = await this.executeReplay(
         workspace.id,
         eligibility.method as RequestReplayMethod,
-        log.url
+        targetUrl
       );
 
       if (result.status === 'workspace-not-active') {

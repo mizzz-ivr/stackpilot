@@ -74,17 +74,61 @@ const createService = ({
 };
 
 describe('RequestReplayService', () => {
-  it('main processで元ログのmethodとURLを再取得してexecutorへ渡す', async () => {
-    const { service, executeReplay } = createService();
+  it('main processで元ログのorigin/pathを使いqueryだけを置き換えてexecutorへ渡す', async () => {
+    const { service, executeReplay } = createService({
+      logsByWorkspace: {
+        'workspace-1': [createLog({ url: 'https://api.example.test/users?trace=1#fragment' })]
+      }
+    });
 
-    const result = await service.replay({ workspaceId: 'workspace-1', logId: 'log-1' });
+    const result = await service.replay({
+      workspaceId: 'workspace-1',
+      logId: 'log-1',
+      queryEntries: [
+        { name: 'page', value: '2' },
+        { name: 'tag', value: 'a' },
+        { name: 'tag', value: 'b' },
+        { name: 'flag', value: '' }
+      ]
+    });
 
     expect(result).toEqual({ status: 'replayed', responseStatus: 204, durationMs: 42 });
     expect(executeReplay).toHaveBeenCalledWith(
       'workspace-1',
       'GET',
-      'https://api.example.test/users?trace=1'
+      'https://api.example.test/users?page=2&tag=a&tag=b&flag='
     );
+  });
+
+  it('rendererが余計なURLを送っても無視して元ログURLから再構築する', async () => {
+    const { service, executeReplay } = createService();
+
+    await service.replay({
+      workspaceId: 'workspace-1',
+      logId: 'log-1',
+      url: 'https://attacker.example/other',
+      queryEntries: [{ name: 'trace', value: '2' }]
+    });
+
+    expect(executeReplay).toHaveBeenCalledWith(
+      'workspace-1',
+      'GET',
+      'https://api.example.test/users?trace=2'
+    );
+  });
+
+  it('不正なqueryはmain processでも拒否してexecutorを呼ばない', async () => {
+    const executeReplay = vi.fn();
+    const { service } = createService({ executeReplay });
+
+    const result = await service.replay({
+      workspaceId: 'workspace-1',
+      logId: 'log-1',
+      queryEntries: [{ name: '', value: '1' }]
+    });
+
+    expect(result).toMatchObject({ status: 'failed', errorCode: 'invalid-query' });
+    expect(executeReplay).not.toHaveBeenCalled();
   });
 
   it('POSTはmain processでも拒否してexecutorを呼ばない', async () => {
@@ -129,7 +173,11 @@ describe('RequestReplayService', () => {
       executeReplay
     });
 
-    const result = await service.replay({ workspaceId: 'workspace-1', logId: 'log-1' });
+    const result = await service.replay({
+      workspaceId: 'workspace-1',
+      logId: 'log-1',
+      queryEntries: [{ name: 'trace', value: '2' }]
+    });
 
     expect(result).toEqual({ status: 'cancelled' });
     expect(mocks.showMessageBox).toHaveBeenCalledTimes(1);
