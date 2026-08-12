@@ -12,6 +12,10 @@ const fixtureUrl = `https://api.example.test/users/${stackpilotE2eSensitivePathS
 const comparisonFixtureUrl = 'https://api.example.test/health?region=jp';
 export const stackpilotE2eReplayResultUrl = `https://api.example.test/users/${stackpilotE2eSensitivePathSegment}/orders?trace=edited&flag=`;
 
+export interface StackpilotE2eApiLogFixture {
+  seedReplayResult: () => Promise<string>;
+}
+
 export const isStackpilotE2eMode = (): boolean => process.env.STACKPILOT_E2E === '1';
 
 export const createStackpilotE2eSessionSnapshot = (): SessionSnapshot => ({
@@ -43,7 +47,7 @@ export const createStackpilotE2eWorkspace = (): StackpilotWorkspace => ({
 export const seedStackpilotE2eApiLog = async (
   apiLogService: ApiLogService,
   workspace: StackpilotWorkspace
-): Promise<void> => {
+): Promise<StackpilotE2eApiLogFixture> => {
   let beforeRequestListener: unknown;
   let beforeSendHeadersListener: unknown;
   let completedListener: unknown;
@@ -171,18 +175,35 @@ export const seedStackpilotE2eApiLog = async (
     }
   });
 
-  await seedRequest({
-    id: 3,
-    method: 'GET',
-    url: stackpilotE2eReplayResultUrl,
-    resourceType: 'xhr',
-    requestHeaders: {
-      accept: 'application/json'
-    },
-    statusCode: 204,
-    responseHeaders: {
-      'content-type': 'application/json',
-      'x-stackpilot-fixture': 'replay-result'
+  return {
+    seedReplayResult: async () => {
+      const existing = apiLogService
+        .list(workspace.id)
+        .find((entry) => entry.url === stackpilotE2eReplayResultUrl);
+      if (existing) return existing.id;
+
+      await seedRequest({
+        id: 3,
+        method: 'GET',
+        url: stackpilotE2eReplayResultUrl,
+        resourceType: 'xhr',
+        requestHeaders: {
+          accept: 'application/json'
+        },
+        statusCode: 204,
+        responseHeaders: {
+          'content-type': 'application/json',
+          'x-stackpilot-fixture': 'replay-result'
+        }
+      });
+
+      const replayed = apiLogService
+        .list(workspace.id)
+        .find((entry) => entry.url === stackpilotE2eReplayResultUrl);
+      if (!replayed) {
+        throw new Error('Electron E2E用Replay結果ログを生成できませんでした。');
+      }
+      return replayed.id;
     }
-  });
+  };
 };
