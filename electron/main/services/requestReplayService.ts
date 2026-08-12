@@ -124,12 +124,14 @@ export class RequestReplayService {
         );
       }
 
-      return {
+      const replayedResult: RequestReplayResult = {
         status: 'replayed',
         responseStatus: result.responseStatus,
-        durationMs: result.durationMs,
-        replayedLogId: result.replayedLogId
+        durationMs: result.durationMs
       };
+      return result.replayedLogId
+        ? { ...replayedResult, replayedLogId: result.replayedLogId }
+        : replayedResult;
     } finally {
       this.inFlight.delete(replayKey);
     }
