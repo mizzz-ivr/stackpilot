@@ -13,6 +13,7 @@ import {
 
 export const ApiLogComparisonController = () => {
   const activeWorkspaceId = useAppStore((state) => state.activeWorkspaceId);
+  const comparisonAutoOpenVersion = useAppStore((state) => state.comparisonAutoOpenVersion);
   const { logs, selectedLogId, comparisonLogIds } = useAppStore((state) => state.inspector);
   const toggleInspectorComparison = useAppStore((state) => state.toggleInspectorComparison);
   const clearInspectorComparison = useAppStore((state) => state.clearInspectorComparison);
@@ -39,6 +40,17 @@ export const ApiLogComparisonController = () => {
     setDifferencesOnly(false);
     setSaveFeedback(undefined);
   }, [activeWorkspaceId]);
+
+  useEffect(() => {
+    if (
+      comparisonAutoOpenVersion > 0 &&
+      comparisonLogs.length === maxApiLogComparisonTargets
+    ) {
+      setDifferencesOnly(false);
+      setSaveFeedback(undefined);
+      setIsOpen(true);
+    }
+  }, [comparisonAutoOpenVersion, comparisonLogs.length]);
 
   useEffect(() => {
     if (isOpen && comparisonLogs.length < maxApiLogComparisonTargets) {
