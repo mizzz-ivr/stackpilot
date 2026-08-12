@@ -10,6 +10,7 @@ export const stackpilotE2eSensitivePathSegment = 'customer-123';
 const fixtureTimestamp = '2026-07-28T00:00:00.000Z';
 const fixtureUrl = `https://api.example.test/users/${stackpilotE2eSensitivePathSegment}/orders?trace=public`;
 const comparisonFixtureUrl = 'https://api.example.test/health?region=jp';
+export const stackpilotE2eReplayResultUrl = `https://api.example.test/users/${stackpilotE2eSensitivePathSegment}/orders?trace=edited&flag=`;
 
 export const isStackpilotE2eMode = (): boolean => process.env.STACKPILOT_E2E === '1';
 
@@ -167,6 +168,21 @@ export const seedStackpilotE2eApiLog = async (
     responseHeaders: {
       'content-type': 'application/json',
       'retry-after': '30'
+    }
+  });
+
+  await seedRequest({
+    id: 3,
+    method: 'GET',
+    url: stackpilotE2eReplayResultUrl,
+    resourceType: 'xhr',
+    requestHeaders: {
+      accept: 'application/json'
+    },
+    statusCode: 204,
+    responseHeaders: {
+      'content-type': 'application/json',
+      'x-stackpilot-fixture': 'replay-result'
     }
   });
 };
