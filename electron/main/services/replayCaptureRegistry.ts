@@ -20,14 +20,15 @@ type PendingReplayCapture = {
   timeout: ReturnType<typeof setTimeout>;
 };
 
-export const defaultReplayCaptureTimeoutMs = 3_000;
+export const defaultReplayCaptureClaimTimeoutMs = 3_000;
+export const defaultReplayCaptureCompletionTimeoutMs = 30_000;
 
 export class ReplayCaptureRegistry {
   private readonly pending = new Map<string, PendingReplayCapture>();
 
   reserve(
     key: ReplayCaptureKey,
-    timeoutMs = defaultReplayCaptureTimeoutMs
+    claimTimeoutMs = defaultReplayCaptureClaimTimeoutMs
   ): ReplayCaptureReservation {
     const captureId = randomUUID();
     let settled = false;
@@ -45,7 +46,7 @@ export class ReplayCaptureRegistry {
       resolveResult(logId);
     };
 
-    const timeout = setTimeout(() => settle(undefined), Math.max(1, timeoutMs));
+    const timeout = setTimeout(() => settle(undefined), Math.max(1, claimTimeoutMs));
     this.pending.set(captureId, {
       key: normalizeKey(key),
       claimed: false,
@@ -65,6 +66,11 @@ export class ReplayCaptureRegistry {
     for (const [captureId, capture] of this.pending) {
       if (capture.claimed || !sameKey(capture.key, normalized)) continue;
       capture.claimed = true;
+      clearTimeout(capture.timeout);
+      capture.timeout = setTimeout(
+        () => capture.resolve(undefined),
+        defaultReplayCaptureCompletionTimeoutMs
+      );
       return captureId;
     }
     return undefined;
