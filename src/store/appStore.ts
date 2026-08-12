@@ -149,8 +149,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         const currentWorkspaceId = get().activeWorkspaceId;
         if (!currentWorkspaceId || entry.workspaceId !== currentWorkspaceId) return;
         set((state) => {
-          const pendingIds = state.pendingReplayComparison
-            ? [state.pendingReplayComparison.sourceLogId, state.pendingReplayComparison.replayedLogId]
+          const pending = state.pendingReplayComparison;
+          const pendingIds = pending
+            ? [pending.sourceLogId, pending.replayedLogId]
             : [];
           const protectedLogIds = [
             ...state.inspector.pinnedLogIds,
@@ -159,15 +160,9 @@ export const useAppStore = create<AppState>((set, get) => ({
             ...pendingIds
           ];
           const nextLogs = upsertInspectorLog(state.inspector.logs, entry, protectedLogIds);
-          const resolveReplayComparison = canResolveReplayComparison(
-            nextLogs,
-            state.pendingReplayComparison
-          );
+          const resolveReplayComparison = canResolveReplayComparison(nextLogs, pending);
           const comparisonLogIds = resolveReplayComparison
-            ? [
-                state.pendingReplayComparison.sourceLogId,
-                state.pendingReplayComparison.replayedLogId
-              ]
+            ? [pending.sourceLogId, pending.replayedLogId]
             : reconcileComparisonLogIds(nextLogs, state.inspector.comparisonLogIds);
 
           return {
@@ -176,12 +171,12 @@ export const useAppStore = create<AppState>((set, get) => ({
               logs: nextLogs,
               comparisonLogIds,
               selectedLogId: resolveReplayComparison
-                ? state.pendingReplayComparison.replayedLogId
+                ? pending.replayedLogId
                 : state.inspector.selectedLogId
             },
             pendingReplayComparison: resolveReplayComparison
               ? undefined
-              : state.pendingReplayComparison,
+              : pending,
             comparisonAutoOpenVersion: resolveReplayComparison
               ? state.comparisonAutoOpenVersion + 1
               : state.comparisonAutoOpenVersion
