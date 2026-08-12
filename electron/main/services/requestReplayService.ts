@@ -127,7 +127,8 @@ export class RequestReplayService {
       return {
         status: 'replayed',
         responseStatus: result.responseStatus,
-        durationMs: result.durationMs
+        durationMs: result.durationMs,
+        replayedLogId: result.replayedLogId
       };
     } finally {
       this.inFlight.delete(replayKey);
