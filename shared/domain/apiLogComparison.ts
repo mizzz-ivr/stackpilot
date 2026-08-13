@@ -382,7 +382,7 @@ const createStatusSummary = (
   if (!leftSuccess && rightSuccess) {
     return { kind: 'non-success-to-success', left, right, label: '非成功系 → 成功系' };
   }
-  return { kind: 'changed', left, right, label: `${left} → ${right}` };
+  return { kind: 'changed', left, right, label: 'statusコード変更' };
 };
 
 const createDurationSummary = (
