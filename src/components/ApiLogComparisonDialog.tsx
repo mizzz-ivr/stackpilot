@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react';
 import {
   compareNetworkLogs,
+  createApiLogComparisonSummary,
   createApiLogComparisonView,
+  type ApiLogComparisonSummary,
+  type ApiLogComparisonVerdict,
   type BodyComparison,
   type ComparableBody,
   type ComparisonDifferenceKind,
@@ -50,6 +53,10 @@ export const ApiLogComparisonDialog = ({
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   const comparison = useMemo(() => compareNetworkLogs(left, right), [left, right]);
+  const summary = useMemo(
+    () => createApiLogComparisonSummary(left, right, comparison),
+    [left, right, comparison]
+  );
   const view = useMemo(
     () => createApiLogComparisonView(comparison, differencesOnly),
     [comparison, differencesOnly]
@@ -149,6 +156,8 @@ export const ApiLogComparisonDialog = ({
         </div>
 
         <div className="min-h-0 flex-1 space-y-6 overflow-auto px-5 py-5">
+          <ComparisonInsightSummary summary={summary} />
+
           {differencesOnly && view.counts.different === 0 ? (
             <div role="status" className="rounded-lg border border-emerald-800/60 bg-emerald-950/30 px-4 py-5 text-sm text-emerald-200">
               比較対象に差分はありません。
@@ -194,6 +203,66 @@ export const ApiLogComparisonDialog = ({
       </div>
     </div>
   );
+};
+
+const ComparisonInsightSummary = ({ summary }: { summary: ApiLogComparisonSummary }) => (
+  <section
+    aria-label="主要差分サマリー"
+    data-verdict={summary.verdict}
+    className="space-y-3 rounded-xl border border-slate-800 bg-slate-900/40 p-4"
+  >
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h3 className="text-sm font-semibold text-slate-100">主要差分サマリー</h3>
+        <p className="mt-1 text-[11px] text-slate-500">比較Bが比較Aからどう変わったかを要約します。品質の良否は自動判定しません。</p>
+      </div>
+      <ComparisonVerdictBadge verdict={summary.verdict} />
+    </div>
+
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <InsightCard
+        label="Status"
+        value={`${summary.status.left} → ${summary.status.right}`}
+        detail={summary.status.label}
+        attention={summary.status.kind === 'success-to-non-success'}
+      />
+      <InsightCard label="Duration差" value={summary.duration.label} detail="比較B - 比較A" />
+      <InsightCard label="Query差分" value={summary.query.label} detail={summary.query.comparable ? '同名queryは出現順で比較' : 'URLを解釈できないためquery集計なし'} />
+      <InsightCard
+        label="Request headers"
+        value={`${summary.requestHeaders.different} / ${summary.requestHeaders.total}件`}
+        detail="差分 / 全header"
+      />
+      <InsightCard
+        label="Response headers"
+        value={`${summary.responseHeaders.different} / ${summary.responseHeaders.total}件`}
+        detail="差分 / 全header"
+      />
+      <InsightCard
+        label="Body"
+        value={`Request ${summary.requestBodyChanged ? '差分あり' : '同一'} / Response ${summary.responseBodyChanged ? '差分あり' : '同一'}`}
+        detail="安全化済みpreviewを比較"
+      />
+    </div>
+  </section>
+);
+
+const InsightCard = ({ label, value, detail, attention = false }: { label: string; value: string; detail: string; attention?: boolean }) => (
+  <div className={`min-w-0 rounded-lg border px-3 py-3 ${attention ? 'border-rose-800/70 bg-rose-950/25' : 'border-slate-800 bg-slate-950/70'}`}>
+    <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
+    <p className={`mt-1 break-words text-xs font-semibold ${attention ? 'text-rose-200' : 'text-slate-200'}`}>{value}</p>
+    <p className="mt-1 text-[10px] text-slate-500">{detail}</p>
+  </div>
+);
+
+const ComparisonVerdictBadge = ({ verdict }: { verdict: ApiLogComparisonVerdict }) => {
+  const tone = verdict === 'same'
+    ? 'border-emerald-800/60 bg-emerald-950/40 text-emerald-300'
+    : verdict === 'attention'
+      ? 'border-rose-800/70 bg-rose-950/40 text-rose-200'
+      : 'border-amber-700/70 bg-amber-950/50 text-amber-200';
+  const label = verdict === 'same' ? '差分なし' : verdict === 'attention' ? '要確認' : '差分あり';
+  return <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${tone}`}>{label}</span>;
 };
 
 const SummarySection = ({ rows }: { rows: ReturnType<typeof compareNetworkLogs>['summary'] }) => (
