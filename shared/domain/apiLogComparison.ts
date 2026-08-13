@@ -386,10 +386,15 @@ const createStatusSummary = (
 };
 
 const createDurationSummary = (
-  leftDurationMs: number,
-  rightDurationMs: number
+  leftDurationMs: number | undefined,
+  rightDurationMs: number | undefined
 ): ApiLogComparisonSummary['duration'] => {
-  if (!Number.isFinite(leftDurationMs) || !Number.isFinite(rightDurationMs)) {
+  if (
+    typeof leftDurationMs !== 'number' ||
+    typeof rightDurationMs !== 'number' ||
+    !Number.isFinite(leftDurationMs) ||
+    !Number.isFinite(rightDurationMs)
+  ) {
     return { label: '比較不可' };
   }
 
