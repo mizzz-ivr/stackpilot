@@ -10,6 +10,7 @@ import {
   type RequestReplayQueryEntry
 } from '../../shared/domain/requestReplay';
 import { formatDurationLabel, type NetworkLog } from '../../shared/domain/inspector';
+import { useAppStore } from '../store/appStore';
 
 interface RequestReplayDialogProps {
   workspace: Pick<Workspace, 'id' | 'name' | 'environmentType'>;
@@ -32,6 +33,9 @@ export const RequestReplayDialog = ({ workspace, log, onClose }: RequestReplayDi
   const onCloseRef = useRef(onClose);
   const isExecutingRef = useRef(false);
   const addedEntrySequenceRef = useRef(0);
+  const queueInspectorReplayComparison = useAppStore(
+    (state) => state.queueInspectorReplayComparison
+  );
   const [isExecuting, setIsExecuting] = useState(false);
   const [feedback, setFeedback] = useState<ReplayFeedback>();
   const [queryDraft, setQueryDraft] = useState<QueryDraftEntry[]>(() => createQueryDraft(log.url));
@@ -132,6 +136,7 @@ export const RequestReplayDialog = ({ workspace, log, onClose }: RequestReplayDi
     isExecutingRef.current = true;
     setIsExecuting(true);
     setFeedback(undefined);
+    let openComparison = false;
     try {
       const result = await window.stackpilot.apiLog.replay({
         workspaceId: workspace.id,
@@ -142,11 +147,14 @@ export const RequestReplayDialog = ({ workspace, log, onClose }: RequestReplayDi
         setFeedback({ kind: 'info', message: '本番環境の確認でRequest Replayをキャンセルしました。' });
       } else if (result.status === 'failed') {
         setFeedback({ kind: 'error', message: result.errorMessage });
+      } else if (result.replayedLogId) {
+        queueInspectorReplayComparison(log.id, result.replayedLogId);
+        openComparison = true;
       } else {
         const changeLabel = queryDiff.total > 0 ? ` Query変更${queryDiff.total}件を適用しました。` : '';
         setFeedback({
           kind: 'success',
-          message: `再実行しました。HTTP ${result.responseStatus} / ${formatDurationLabel(result.durationMs)}。${changeLabel} 新しい通信はAPIログ一覧へ追加されます。`
+          message: `再実行しました。HTTP ${result.responseStatus} / ${formatDurationLabel(result.durationMs)}。${changeLabel} 通信ログの自動捕捉ができなかったため、APIログ一覧から結果を確認してください。`
         });
       }
     } catch {
@@ -154,6 +162,7 @@ export const RequestReplayDialog = ({ workspace, log, onClose }: RequestReplayDi
     } finally {
       isExecutingRef.current = false;
       setIsExecuting(false);
+      if (openComparison) onCloseRef.current();
     }
   };
 
@@ -306,6 +315,7 @@ export const RequestReplayDialog = ({ workspace, log, onClose }: RequestReplayDi
               <li>現在のブラウザセッションCookieは通常のfetch挙動として送信される可能性があります。</li>
               <li>現在アクティブな同一Workspaceのタブで実行します。</li>
               <li>キャッシュは使用せず、redirectは通常どおり追従します。</li>
+              <li>再実行した通信を捕捉できた場合は、元通信との比較画面を自動で開きます。</li>
             </ul>
           </section>
 

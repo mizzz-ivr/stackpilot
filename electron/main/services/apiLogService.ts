@@ -15,6 +15,11 @@ import {
 import type { Session } from 'electron';
 import { evaluateRequestRisk, toRequestPath, type RiskConfirmationRequest } from '../../../shared/domain/risk';
 import type { CapturedResponseBody } from './responseBodyCaptureService';
+import {
+  ReplayCaptureRegistry,
+  type ReplayCaptureKey,
+  type ReplayCaptureReservation
+} from './replayCaptureRegistry';
 
 type PendingUploadCapture = {
   rawBody?: string;
@@ -34,6 +39,7 @@ type RequestMeta = {
   requestHeaders: Record<string, string>;
   requestBody?: SafeRequestBodyPreview;
   pendingUpload?: PendingUploadCapture;
+  replayCaptureId?: string;
 };
 
 type UploadDataItem = {
@@ -51,6 +57,7 @@ export class ApiLogService {
   private listeners = new Set<LogListener>();
   private pendingResponseBodies = new Map<string, SafeResponseBodyPreview[]>();
   private responseCaptureUnavailableReasons = new Map<string, ResponseBodyUnavailableReason>();
+  private readonly replayCaptureRegistry = new ReplayCaptureRegistry();
 
   private confirmRiskHandler?: ConfirmRiskHandler;
 
@@ -60,6 +67,10 @@ export class ApiLogService {
 
   setConfirmRiskHandler(handler: ConfirmRiskHandler): void {
     this.confirmRiskHandler = handler;
+  }
+
+  beginReplayCapture(key: ReplayCaptureKey): ReplayCaptureReservation {
+    return this.replayCaptureRegistry.reserve(key);
   }
 
   setResponseCaptureStatus(
@@ -154,6 +165,12 @@ export class ApiLogService {
 
         const resourceType = details.resourceType;
         const type: ApiLogEntry['type'] = resourceType === 'xhr' ? 'xhr' : 'other';
+        const replayCaptureId = this.replayCaptureRegistry.claim({
+          workspaceId: workspace.id,
+          tabId,
+          method: details.method,
+          url: details.url
+        });
         this.requestMap.set(details.id, {
           startedAt: Date.now(),
           workspaceId: workspace.id,
@@ -162,7 +179,8 @@ export class ApiLogService {
           tabId,
           type,
           requestHeaders: {},
-          pendingUpload
+          pendingUpload,
+          replayCaptureId
         });
         callback({ cancel: false });
       };
@@ -221,6 +239,7 @@ export class ApiLogService {
       };
 
       this.addLog(entry);
+      this.replayCaptureRegistry.complete(meta.replayCaptureId, entry.id);
     });
 
     session.webRequest.onErrorOccurred((details) => {
@@ -248,6 +267,7 @@ export class ApiLogService {
       };
 
       this.addLog(entry);
+      this.replayCaptureRegistry.complete(meta.replayCaptureId, entry.id);
     });
   }
 

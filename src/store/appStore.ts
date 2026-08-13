@@ -33,6 +33,11 @@ interface CreateWorkspaceFormInput {
   customEnvironmentLabel?: string;
 }
 
+interface PendingReplayComparison {
+  sourceLogId: string;
+  replayedLogId: string;
+}
+
 interface AppState {
   snapshot?: AppSnapshot;
   activeWorkspace?: Workspace;
@@ -41,6 +46,8 @@ interface AppState {
   activeTabId?: string;
   inspector: InspectorState;
   riskDialog: RiskDialogState;
+  pendingReplayComparison?: PendingReplayComparison;
+  comparisonAutoOpenVersion: number;
   load: () => Promise<void>;
   selectWorkspace: (workspaceId: string) => Promise<void>;
   navigate: (url: string) => Promise<void>;
@@ -54,6 +61,7 @@ interface AppState {
   toggleInspectorPin: (logId: string) => void;
   toggleInspectorComparison: (logId: string) => void;
   clearInspectorComparison: () => void;
+  queueInspectorReplayComparison: (sourceLogId: string, replayedLogId: string) => void;
   selectInspectorLog: (logId?: string) => void;
   createWorkspace: (input: CreateWorkspaceFormInput) => Promise<void>;
   requestRiskConfirmation: (request: RiskConfirmationRequest) => boolean;
@@ -102,10 +110,23 @@ const applyInspectorFilter = (
   };
 };
 
+const canResolveReplayComparison = (
+  logs: NetworkLog[],
+  pending: PendingReplayComparison | undefined
+): pending is PendingReplayComparison =>
+  Boolean(
+    pending &&
+    pending.sourceLogId !== pending.replayedLogId &&
+    logs.some((log) => log.id === pending.sourceLogId) &&
+    logs.some((log) => log.id === pending.replayedLogId)
+  );
+
 export const useAppStore = create<AppState>((set, get) => ({
   ...createInitialWorkspaceSwitchState(),
   inspector: createInitialInspectorState(),
   riskDialog: createInitialRiskDialogState(),
+  pendingReplayComparison: undefined,
+  comparisonAutoOpenVersion: 0,
   load: async () => {
     set((state) => ({ inspector: { ...state.inspector, isLoading: true, errorMessage: undefined } }));
 
@@ -128,20 +149,37 @@ export const useAppStore = create<AppState>((set, get) => ({
         const currentWorkspaceId = get().activeWorkspaceId;
         if (!currentWorkspaceId || entry.workspaceId !== currentWorkspaceId) return;
         set((state) => {
+          const pending = state.pendingReplayComparison;
+          const pendingIds = pending
+            ? [pending.sourceLogId, pending.replayedLogId]
+            : [];
           const protectedLogIds = [
             ...state.inspector.pinnedLogIds,
-            ...state.inspector.comparisonLogIds
+            ...state.inspector.comparisonLogIds,
+            ...(state.inspector.selectedLogId ? [state.inspector.selectedLogId] : []),
+            ...pendingIds
           ];
           const nextLogs = upsertInspectorLog(state.inspector.logs, entry, protectedLogIds);
+          const resolveReplayComparison = canResolveReplayComparison(nextLogs, pending);
+          const comparisonLogIds = resolveReplayComparison
+            ? [pending.sourceLogId, pending.replayedLogId]
+            : reconcileComparisonLogIds(nextLogs, state.inspector.comparisonLogIds);
+
           return {
             inspector: {
               ...state.inspector,
               logs: nextLogs,
-              comparisonLogIds: reconcileComparisonLogIds(
-                nextLogs,
-                state.inspector.comparisonLogIds
-              )
-            }
+              comparisonLogIds,
+              selectedLogId: resolveReplayComparison
+                ? pending.replayedLogId
+                : state.inspector.selectedLogId
+            },
+            pendingReplayComparison: resolveReplayComparison
+              ? undefined
+              : pending,
+            comparisonAutoOpenVersion: resolveReplayComparison
+              ? state.comparisonAutoOpenVersion + 1
+              : state.comparisonAutoOpenVersion
           };
         });
       });
@@ -161,6 +199,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           isLoading: false,
           errorMessage: undefined
         },
+        pendingReplayComparison: undefined,
+        comparisonAutoOpenVersion: 0,
         switchingWorkspaceId: undefined
       });
     } catch {
@@ -183,7 +223,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         selectedLogId: undefined,
         isLoading: true,
         errorMessage: undefined
-      }
+      },
+      pendingReplayComparison: undefined,
+      comparisonAutoOpenVersion: 0
     }));
 
     const activeTab = targetWorkspace.tabs.find((tab) => tab.isActive) ?? targetWorkspace.tabs[0];
@@ -307,7 +349,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           state.inspector.comparisonLogIds,
           logId
         )
-      }
+      },
+      pendingReplayComparison: undefined
     }));
   },
   clearInspectorComparison: () => {
@@ -315,8 +358,29 @@ export const useAppStore = create<AppState>((set, get) => ({
       inspector: {
         ...state.inspector,
         comparisonLogIds: []
-      }
+      },
+      pendingReplayComparison: undefined
     }));
+  },
+  queueInspectorReplayComparison: (sourceLogId, replayedLogId) => {
+    if (!sourceLogId || !replayedLogId || sourceLogId === replayedLogId) return;
+    set((state) => {
+      const pending = { sourceLogId, replayedLogId };
+      if (!state.inspector.logs.some((log) => log.id === sourceLogId)) return state;
+      if (!canResolveReplayComparison(state.inspector.logs, pending)) {
+        return { pendingReplayComparison: pending };
+      }
+
+      return {
+        inspector: {
+          ...state.inspector,
+          comparisonLogIds: [sourceLogId, replayedLogId],
+          selectedLogId: replayedLogId
+        },
+        pendingReplayComparison: undefined,
+        comparisonAutoOpenVersion: state.comparisonAutoOpenVersion + 1
+      };
+    });
   },
   selectInspectorLog: (logId) => {
     set((state) => ({

@@ -100,6 +100,26 @@ describe('RequestReplayService', () => {
     );
   });
 
+  it('executorが捕捉したReplayログIDをrenderer向け結果へ引き継ぐ', async () => {
+    const executeReplay = vi.fn(async () => ({
+      status: 'replayed' as const,
+      responseStatus: 204,
+      durationMs: 42,
+      replayedLogId: 'replayed-log-1'
+    }));
+    const { service } = createService({ executeReplay });
+
+    await expect(service.replay({
+      workspaceId: 'workspace-1',
+      logId: 'log-1'
+    })).resolves.toEqual({
+      status: 'replayed',
+      responseStatus: 204,
+      durationMs: 42,
+      replayedLogId: 'replayed-log-1'
+    });
+  });
+
   it('rendererが余計なURLを送っても無視して元ログURLから再構築する', async () => {
     const { service, executeReplay } = createService();
 

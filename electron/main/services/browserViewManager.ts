@@ -3,6 +3,7 @@ import type { Workspace } from '../../../shared/contracts';
 import type { RequestReplayMethod } from '../../../shared/domain/requestReplay';
 import { ApiLogService } from './apiLogService';
 import { ResponseBodyCaptureService } from './responseBodyCaptureService';
+import type { ReplayCaptureReservation } from './replayCaptureRegistry';
 
 type ActiveTab = { view: BrowserView; workspaceId: string; tabId: string };
 
@@ -11,6 +12,7 @@ export type BrowserRequestReplayResult =
       status: 'replayed';
       responseStatus: number;
       durationMs: number;
+      replayedLogId?: string;
     }
   | {
       status: 'failed';
@@ -19,6 +21,8 @@ export type BrowserRequestReplayResult =
   | {
       status: 'workspace-not-active';
     };
+
+const replayCaptureGraceMs = 750;
 
 export class BrowserViewManager {
   private activeTab?: ActiveTab;
@@ -86,6 +90,13 @@ export class BrowserViewManager {
       return { status: 'workspace-not-active' };
     }
 
+    const capture = this.apiLogService.beginReplayCapture({
+      workspaceId,
+      tabId: active.tabId,
+      method,
+      url
+    });
+
     const code = `
       (async () => {
         const startedAt = performance.now();
@@ -111,16 +122,23 @@ export class BrowserViewManager {
     `;
 
     try {
-      const result = await active.view.webContents.executeJavaScriptInIsolatedWorld(
+      const rawResult = await active.view.webContents.executeJavaScriptInIsolatedWorld(
         1001,
         [{ code }],
         true
       ) as unknown;
-      return isBrowserReplayExecutionResult(result)
-        ? result
-        : { status: 'failed', durationMs: 0 };
+      const result = isBrowserReplayExecutionResult(rawResult)
+        ? rawResult
+        : { status: 'failed' as const, durationMs: 0 };
+
+      if (result.status !== 'replayed') return result;
+
+      const replayedLogId = await waitForCapturedReplayLog(capture);
+      return replayedLogId ? { ...result, replayedLogId } : result;
     } catch {
       return { status: 'failed', durationMs: 0 };
+    } finally {
+      capture.cancel();
     }
   }
 
@@ -136,6 +154,16 @@ export class BrowserViewManager {
     return this.activeTab?.view.webContents.id;
   }
 }
+
+const waitForCapturedReplayLog = async (
+  capture: ReplayCaptureReservation
+): Promise<string | undefined> =>
+  Promise.race([
+    capture.result,
+    new Promise<undefined>((resolve) => {
+      setTimeout(() => resolve(undefined), replayCaptureGraceMs);
+    })
+  ]);
 
 const isBrowserReplayExecutionResult = (
   value: unknown

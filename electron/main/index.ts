@@ -12,7 +12,8 @@ import {
   createStackpilotE2eSessionSnapshot,
   isStackpilotE2eMode,
   seedStackpilotE2eApiLog,
-  stackpilotE2eWorkspaceId
+  stackpilotE2eWorkspaceId,
+  type StackpilotE2eApiLogFixture
 } from './e2e/fixture';
 
 let mainWindow: BrowserWindow | null = null;
@@ -34,6 +35,7 @@ const createWindow = async (): Promise<void> => {
   await workspaceService.init();
 
   const apiLogService = new ApiLogService();
+  let e2eApiLogFixture: StackpilotE2eApiLogFixture | undefined;
   if (e2eMode) {
     const workspace = workspaceService
       .getSnapshot()
@@ -41,7 +43,7 @@ const createWindow = async (): Promise<void> => {
     if (!workspace) {
       throw new Error('Electron E2E用Workspaceを初期化できませんでした。');
     }
-    await seedStackpilotE2eApiLog(apiLogService, workspace);
+    e2eApiLogFixture = await seedStackpilotE2eApiLog(apiLogService, workspace);
   }
 
   const browserViewManager = new BrowserViewManager(apiLogService);
@@ -64,7 +66,16 @@ const createWindow = async (): Promise<void> => {
   registerHandlers(mainWindow, workspaceService, browserViewManager, apiLogService, mobileInspectorServer, {
     disableBrowserNavigation: e2eMode,
     requestReplayExecutor: e2eMode
-      ? async () => ({ status: 'replayed', responseStatus: 204, durationMs: 42 })
+      ? async () => {
+          if (!e2eApiLogFixture) return { status: 'failed', durationMs: 0 };
+          const replayedLogId = await e2eApiLogFixture.seedReplayResult();
+          return {
+            status: 'replayed',
+            responseStatus: 204,
+            durationMs: 42,
+            replayedLogId
+          };
+        }
       : undefined
   });
 

@@ -82,6 +82,12 @@ const unsubscribeMobilePairing = subscribeMobilePairingStatus((status) => {
   void pairingUri;
 });
 
+void replayResult.then((result) => {
+  if (result.status !== 'replayed') return;
+  const replayedLogId: string | undefined = result.replayedLogId;
+  void replayedLogId;
+});
+
 void previewResult;
 void saveResult;
 void discardResult;

@@ -43,7 +43,7 @@ pnpm build
 xvfb-run -a pnpm test:e2e
 ```
 
-E2E実行時は専用の一時`userData`ディレクトリを作成し、固定Workspaceと固定APIログを初期化します。`STACKPILOT_E2E=1`はPlaywright fixtureからだけ設定され、通常起動のWorkspaceや設定には影響しません。native save dialogはOS依存を避けるためmain processで一時保存先へ置き換えます。Request ReplayはCIから外部ネットワークへ送信しないよう固定executorを注入し、renderer・preload・main processの操作経路と結果表示を検証します。実BrowserViewでの送信は実機確認対象です。
+E2E実行時は専用の一時`userData`ディレクトリを作成し、固定Workspaceと固定APIログを初期化します。`STACKPILOT_E2E=1`はPlaywright fixtureからだけ設定され、通常起動のWorkspaceや設定には影響しません。native save dialogはOS依存を避けるためmain processで一時保存先へ置き換えます。Request ReplayはCIから外部ネットワークへ送信せず、Replay実行時にE2E用結果ログを既存の`ApiLogService`経路で動的生成し、renderer・preload・main process・自動比較までの操作経路を検証します。実BrowserViewでの送信は実機確認対象です。
 
 失敗時は`test-results/e2e`へスクリーンショットとPlaywright traceを出力します。成功時は証跡ファイルを残しません。
 
@@ -159,9 +159,17 @@ rendererからmain processへ渡す値はWorkspace ID、source log ID、query en
 
 PROD Workspaceでは、rendererの実行前プレビューに加えてmain processがElectronネイティブ確認ダイアログを表示し、明示的に再実行を選択した場合だけ送信します。同じログの多重実行はmain processでも拒否します。
 
+### Replay後の自動比較
+
+Replay直前にmain processでWorkspace / tab / method / exact URLの一時capture予約を作り、既存`webRequest`経路で一致した次の通信を一度だけclaimします。通信完了時に実際に生成されたAPIログIDを取得し、元通信を比較A、Replay結果を比較Bとして既存の比較ダイアログを自動表示します。
+
+Replay通信へ追跡用header/query/cookieは追加しません。captureできなかった場合もReplay自体は成功扱いを維持し、APIログ一覧から結果を確認する案内へフォールバックします。
+
+同じWorkspace・tab・method・URLへの別通信がReplay直後にほぼ同時発生した場合は、先に到達した通信を捕捉する可能性があります。通信条件を変えないことを優先し、短時間予約と完全一致条件で誤捕捉範囲を抑えています。詳細は`docs_request_replay_ja.md`を参照してください。
+
 成功時はHTTP statusとdurationを表示します。実BrowserViewのReplay通信は既存の`webRequest` / response body capture経路へ流れるため、通常のAPIログとして確認できます。ネットワーク例外のraw文字列はrendererへ返しません。
 
-Request body再送、元header再利用、origin/pathの任意編集、POST等の変更系method、Mobile InspectorからのReplay、Replay結果との自動比較は対象外です。詳細は`docs_request_replay_ja.md`を参照してください。
+Request body再送、元header再利用、origin/pathの任意編集、POST等の変更系method、Mobile InspectorからのReplayは対象外です。詳細は`docs_request_replay_ja.md`を参照してください。
 
 ## API通信比較と安全化済み比較レポート
 
