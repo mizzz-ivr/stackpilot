@@ -1,7 +1,7 @@
 import { expect, test } from './fixtures/electronApp';
 
 const sourcePath = '/users/customer-123/orders?trace=public';
-const resultPath = '/users/customer-123/orders?trace=history&flag=';
+const resultPath = '/users/customer-123/orders?trace=edited&flag=';
 
 test('再実行結果を履歴へ記録し、比較対象へ復元できる', async ({ appWindow }) => {
   await expect(appWindow.getByText('API Inspector')).toBeVisible();
@@ -11,7 +11,7 @@ test('再実行結果を履歴へ記録し、比較対象へ復元できる', as
 
   const runDialog = appWindow.getByRole('dialog', { name: /Request Replay/ });
   const firstQueryValue = runDialog.getByRole('textbox', { name: 'Query値 1', exact: true });
-  await firstQueryValue.fill('history');
+  await firstQueryValue.fill('edited');
   await runDialog.getByRole('button', { name: 'Query parameterを追加', exact: true }).click();
   await runDialog.getByRole('textbox', { name: 'Query名 2', exact: true }).fill('flag');
   await runDialog.getByRole('button', { name: /安全に再実行/ }).click();
