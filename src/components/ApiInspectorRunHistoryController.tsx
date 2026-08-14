@@ -32,20 +32,18 @@ export const ApiInspectorRunHistoryController = () => {
   }, [comparisonLogIds, logs]);
 
   useEffect(() => {
-    lastRecordedVersionRef.current = 0;
     setExpanded(false);
   }, [activeWorkspaceId]);
 
   useEffect(() => {
     if (
       comparisonAutoOpenVersion <= 0 ||
-      comparisonAutoOpenVersion <= lastRecordedVersionRef.current
+      comparisonAutoOpenVersion <= lastRecordedVersionRef.current ||
+      !activeWorkspaceId ||
+      comparisonLogs.length !== 2
     ) {
       return;
     }
-
-    lastRecordedVersionRef.current = comparisonAutoOpenVersion;
-    if (!activeWorkspaceId || comparisonLogs.length !== 2) return;
 
     const [sourceLog, resultLog] = comparisonLogs;
     if (
@@ -68,6 +66,7 @@ export const ApiInspectorRunHistoryController = () => {
       durationMs: resultLog.durationMs,
       executedAt: resultLog.startedAt
     }));
+    lastRecordedVersionRef.current = comparisonAutoOpenVersion;
   }, [activeWorkspaceId, comparisonAutoOpenVersion, comparisonLogs]);
 
   const restoreComparison = (entry: ApiInspectorRunHistoryEntry): void => {
