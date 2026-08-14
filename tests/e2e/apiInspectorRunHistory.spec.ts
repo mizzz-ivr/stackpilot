@@ -24,7 +24,7 @@ test('再実行結果を履歴へ記録し、比較対象へ復元できる', as
   await comparisonControls.getByRole('button', { name: 'API通信の比較対象をすべて解除', exact: true }).click();
 
   const historyControls = appWindow.getByRole('region', { name: 'API Inspector実行履歴', exact: true });
-  await historyControls.getByRole('button', { name: /再実行履歴/ }).click();
+  await historyControls.getByRole('button', { name: '▸ 再実行履歴', exact: true }).click();
 
   const historyRegion = appWindow.getByRole('region', { name: '再実行履歴', exact: true });
   await expect(historyRegion.getByText(resultPath, { exact: true })).toBeVisible();
