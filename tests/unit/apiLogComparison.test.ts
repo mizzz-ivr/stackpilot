@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   compareNetworkLogs,
+  createApiLogComparisonSummary,
   createApiLogComparisonView,
   reconcileComparisonLogIds,
   selectComparisonLogs,
@@ -198,5 +199,100 @@ describe('API通信の差分判定', () => {
     expect(result.requestBody.difference).toBe('different');
     expect(result.responseBody.difference).toBe('different');
     expect(result.responseBody.right.redactedFieldPaths).toEqual(['reason']);
+  });
+});
+
+describe('API通信の主要差分サマリー', () => {
+  it('成功系から非成功系への変化を要確認としてquery・duration・header・body差分を集約する', () => {
+    const left = createLog({
+      url: 'https://api.example.test/users?tag=a&tag=b&page=1',
+      durationMs: 80
+    });
+    const right = createLog({
+      id: 'log-2',
+      url: 'https://api.example.test/users?tag=a&tag=c&flag=',
+      status: 503,
+      durationMs: 120,
+      requestHeaders: {
+        accept: 'application/json',
+        'x-request-id': 'request-2',
+        'x-retry-mode': 'manual'
+      },
+      responseHeaders: {
+        'content-type': 'application/json',
+        'retry-after': '30'
+      },
+      responseBody: {
+        kind: 'json',
+        contentType: 'application/json',
+        content: '{"ok":false}',
+        byteLength: 12,
+        isTruncated: false,
+        redactedFieldPaths: []
+      }
+    });
+
+    const summary = createApiLogComparisonSummary(left, right);
+
+    expect(summary.verdict).toBe('attention');
+    expect(summary.status).toMatchObject({
+      kind: 'success-to-non-success',
+      left: '200',
+      right: '503',
+      label: '成功系 → 非成功系'
+    });
+    expect(summary.duration).toEqual({ deltaMs: 40, percent: 50, label: '+40ms (+50%)' });
+    expect(summary.query).toEqual({
+      comparable: true,
+      added: 1,
+      changed: 1,
+      removed: 1,
+      label: '追加 1 / 変更 1 / 削除 1'
+    });
+    expect(summary.requestHeaders).toEqual({ different: 2, total: 3 });
+    expect(summary.responseHeaders).toEqual({ different: 1, total: 2 });
+    expect(summary.requestBodyChanged).toBe(false);
+    expect(summary.responseBodyChanged).toBe(true);
+  });
+
+  it('非成功系から成功系への変化は差分ありとして扱い、改善とは断定しない', () => {
+    const summary = createApiLogComparisonSummary(
+      createLog({ status: 404 }),
+      createLog({ id: 'log-2', status: 204 })
+    );
+
+    expect(summary.verdict).toBe('different');
+    expect(summary.status.kind).toBe('non-success-to-success');
+    expect(summary.status.label).toBe('非成功系 → 成功系');
+  });
+
+  it('差分がない通信は差分なしとして0件サマリーを返す', () => {
+    const left = createLog({ url: 'https://api.example.test/users?tag=a&tag=b' });
+    const summary = createApiLogComparisonSummary(left, { ...left, id: 'log-2' });
+
+    expect(summary.verdict).toBe('same');
+    expect(summary.status.kind).toBe('same');
+    expect(summary.duration).toEqual({ deltaMs: 0, percent: 0, label: '0ms (0%)' });
+    expect(summary.query).toMatchObject({ added: 0, changed: 0, removed: 0 });
+    expect(summary.requestHeaders.different).toBe(0);
+    expect(summary.responseHeaders.different).toBe(0);
+    expect(summary.requestBodyChanged).toBe(false);
+    expect(summary.responseBodyChanged).toBe(false);
+  });
+
+  it('URLを解釈できない場合はqueryだけ比較不可として全体比較を継続する', () => {
+    const summary = createApiLogComparisonSummary(
+      createLog({ url: 'not-a-url' }),
+      createLog({ id: 'log-2', url: 'still-not-a-url' })
+    );
+
+    expect(summary.verdict).toBe('different');
+    expect(summary.query).toEqual({
+      comparable: false,
+      added: 0,
+      changed: 0,
+      removed: 0,
+      label: '比較不可'
+    });
   });
 });

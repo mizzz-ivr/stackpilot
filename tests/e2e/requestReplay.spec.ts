@@ -59,6 +59,13 @@ test('GET通信のqueryを編集して再実行後に元通信との比較を自
   await expect(comparisonDialog.getByText('比較B', { exact: true }).first()).toBeVisible();
   await expect(comparisonDialog.getByText(successPath, { exact: true }).first()).toBeVisible();
   await expect(comparisonDialog.getByText(editedReplayPath, { exact: true }).first()).toBeVisible();
+
+  const insightSummary = comparisonDialog.getByRole('region', { name: '主要差分サマリー', exact: true });
+  await expect(insightSummary).toBeVisible();
+  await expect(insightSummary.getByText('差分あり', { exact: true }).first()).toBeVisible();
+  await expect(insightSummary.getByText('追加 1 / 変更 1 / 削除 0', { exact: true })).toBeVisible();
+  await expect(insightSummary.getByText('200 → 204', { exact: true })).toBeVisible();
+
   await expect(comparisonDialog.getByRole('table', { name: '通信概要の比較', exact: true })).toBeVisible();
 
   await comparisonDialog.getByRole('button', { name: 'API通信比較を閉じる', exact: true }).click();

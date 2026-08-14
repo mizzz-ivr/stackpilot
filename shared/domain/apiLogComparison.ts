@@ -8,6 +8,12 @@ import {
 export const maxApiLogComparisonTargets = 2;
 
 export type ComparisonDifferenceKind = 'same' | 'different' | 'left-only' | 'right-only';
+export type ApiLogComparisonVerdict = 'same' | 'different' | 'attention';
+export type ApiLogStatusChangeKind =
+  | 'same'
+  | 'success-to-non-success'
+  | 'non-success-to-success'
+  | 'changed';
 
 export interface ScalarComparisonRow {
   key: 'method' | 'url' | 'resource-type' | 'status' | 'duration';
@@ -63,6 +69,38 @@ export interface ApiLogComparisonView {
   };
   hasDifferences: boolean;
   differencesOnly: boolean;
+}
+
+export interface ApiLogComparisonSummary {
+  verdict: ApiLogComparisonVerdict;
+  status: {
+    kind: ApiLogStatusChangeKind;
+    left: string;
+    right: string;
+    label: string;
+  };
+  duration: {
+    deltaMs?: number;
+    percent?: number;
+    label: string;
+  };
+  query: {
+    comparable: boolean;
+    added: number;
+    changed: number;
+    removed: number;
+    label: string;
+  };
+  requestHeaders: {
+    different: number;
+    total: number;
+  };
+  responseHeaders: {
+    different: number;
+    total: number;
+  };
+  requestBodyChanged: boolean;
+  responseBodyChanged: boolean;
 }
 
 export const reconcileComparisonLogIds = (
@@ -128,6 +166,39 @@ export const compareNetworkLogs = (left: NetworkLog, right: NetworkLog): ApiLogC
       responseHeaders.some(isDifferentRow) ||
       requestBody.difference !== 'same' ||
       responseBody.difference !== 'same'
+  };
+};
+
+export const createApiLogComparisonSummary = (
+  left: NetworkLog,
+  right: NetworkLog,
+  comparison: ApiLogComparison = compareNetworkLogs(left, right)
+): ApiLogComparisonSummary => {
+  const status = createStatusSummary(left.status, right.status);
+  const query = createQuerySummary(left.url, right.url);
+  const requestHeaderDifferences = comparison.requestHeaders.filter(isDifferentRow).length;
+  const responseHeaderDifferences = comparison.responseHeaders.filter(isDifferentRow).length;
+
+  return {
+    verdict:
+      status.kind === 'success-to-non-success'
+        ? 'attention'
+        : comparison.hasDifferences
+          ? 'different'
+          : 'same',
+    status,
+    duration: createDurationSummary(left.durationMs, right.durationMs),
+    query,
+    requestHeaders: {
+      different: requestHeaderDifferences,
+      total: comparison.requestHeaders.length
+    },
+    responseHeaders: {
+      different: responseHeaderDifferences,
+      total: comparison.responseHeaders.length
+    },
+    requestBodyChanged: comparison.requestBody.difference !== 'same',
+    responseBodyChanged: comparison.responseBody.difference !== 'same'
   };
 };
 
@@ -292,6 +363,103 @@ const bodySignature = (body: ComparableBody): string =>
     unavailableReason: body.unavailableReason ?? null,
     redactedFieldPaths: body.redactedFieldPaths
   });
+
+const createStatusSummary = (
+  leftStatus: number | undefined,
+  rightStatus: number | undefined
+): ApiLogComparisonSummary['status'] => {
+  const left = formatStatus(leftStatus);
+  const right = formatStatus(rightStatus);
+  if (leftStatus === rightStatus) {
+    return { kind: 'same', left, right, label: '変更なし' };
+  }
+
+  const leftSuccess = isSuccessStatus(leftStatus);
+  const rightSuccess = isSuccessStatus(rightStatus);
+  if (leftSuccess && !rightSuccess) {
+    return { kind: 'success-to-non-success', left, right, label: '成功系 → 非成功系' };
+  }
+  if (!leftSuccess && rightSuccess) {
+    return { kind: 'non-success-to-success', left, right, label: '非成功系 → 成功系' };
+  }
+  return { kind: 'changed', left, right, label: 'statusコード変更' };
+};
+
+const createDurationSummary = (
+  leftDurationMs: number | undefined,
+  rightDurationMs: number | undefined
+): ApiLogComparisonSummary['duration'] => {
+  if (
+    typeof leftDurationMs !== 'number' ||
+    typeof rightDurationMs !== 'number' ||
+    !Number.isFinite(leftDurationMs) ||
+    !Number.isFinite(rightDurationMs)
+  ) {
+    return { label: '比較不可' };
+  }
+
+  const deltaMs = rightDurationMs - leftDurationMs;
+  const percent = leftDurationMs === 0 ? undefined : roundOneDecimal((deltaMs / leftDurationMs) * 100);
+  const deltaLabel = `${formatSignedNumber(deltaMs)}ms`;
+  return {
+    deltaMs,
+    percent,
+    label: percent === undefined ? deltaLabel : `${deltaLabel} (${formatSignedNumber(percent)}%)`
+  };
+};
+
+const createQuerySummary = (leftUrl: string, rightUrl: string): ApiLogComparisonSummary['query'] => {
+  let left: URL;
+  let right: URL;
+  try {
+    left = new URL(leftUrl);
+    right = new URL(rightUrl);
+  } catch {
+    return { comparable: false, added: 0, changed: 0, removed: 0, label: '比較不可' };
+  }
+
+  const leftByName = groupQueryValues(left.searchParams);
+  const rightByName = groupQueryValues(right.searchParams);
+  const names = new Set([...leftByName.keys(), ...rightByName.keys()]);
+  let added = 0;
+  let changed = 0;
+  let removed = 0;
+
+  for (const name of names) {
+    const leftValues = leftByName.get(name) ?? [];
+    const rightValues = rightByName.get(name) ?? [];
+    const commonLength = Math.min(leftValues.length, rightValues.length);
+    for (let index = 0; index < commonLength; index += 1) {
+      if (leftValues[index] !== rightValues[index]) changed += 1;
+    }
+    if (rightValues.length > leftValues.length) added += rightValues.length - leftValues.length;
+    if (leftValues.length > rightValues.length) removed += leftValues.length - rightValues.length;
+  }
+
+  return {
+    comparable: true,
+    added,
+    changed,
+    removed,
+    label: `追加 ${added} / 変更 ${changed} / 削除 ${removed}`
+  };
+};
+
+const groupQueryValues = (params: URLSearchParams): Map<string, string[]> => {
+  const grouped = new Map<string, string[]>();
+  for (const [name, value] of params.entries()) {
+    const values = grouped.get(name) ?? [];
+    values.push(value);
+    grouped.set(name, values);
+  }
+  return grouped;
+};
+
+const isSuccessStatus = (status?: number): boolean =>
+  typeof status === 'number' && status >= 200 && status < 300;
+
+const roundOneDecimal = (value: number): number => Math.round(value * 10) / 10;
+const formatSignedNumber = (value: number): string => value > 0 ? `+${value}` : String(value);
 
 const isDifferentRow = (row: { difference: ComparisonDifferenceKind }): boolean =>
   row.difference !== 'same';
