@@ -91,6 +91,7 @@ export const ApiInspectorRunHistoryController = () => {
       <div className="flex items-center justify-between gap-2">
         <button
           type="button"
+          aria-label={expanded ? '再実行履歴を閉じる' : '再実行履歴を開く'}
           aria-expanded={expanded}
           aria-controls="api-inspector-run-history"
           className="flex min-w-0 items-center gap-2 text-left text-xs font-semibold text-slate-200 hover:text-white"
