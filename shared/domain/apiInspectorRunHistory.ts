@@ -15,8 +15,8 @@ export interface ApiInspectorRunHistoryEntry {
   method: string;
   targetUrl: string;
   queryEntries: ApiInspectorRunQueryEntry[];
-  responseStatus: number;
-  durationMs: number;
+  responseStatus?: number;
+  durationMs?: number;
   executedAt: number;
 }
 
@@ -44,17 +44,13 @@ export const clearApiInspectorRunHistory = (
 ): ApiInspectorRunHistoryEntry[] =>
   history.filter((entry) => entry.workspaceId !== workspaceId);
 
-export const collectApiInspectorRunHistoryProtectedLogIds = (
-  history: ApiInspectorRunHistoryEntry[],
-  workspaceId: string
-): string[] => {
-  const ids = new Set<string>();
-  for (const entry of history) {
-    if (entry.workspaceId !== workspaceId) continue;
-    ids.add(entry.sourceLogId);
-    if (entry.resultLogId) ids.add(entry.resultLogId);
+export const parseApiInspectorRunQueryEntries = (urlValue: string): ApiInspectorRunQueryEntry[] => {
+  try {
+    const url = new URL(urlValue);
+    return Array.from(url.searchParams.entries(), ([name, value]) => ({ name, value }));
+  } catch {
+    return [];
   }
-  return [...ids];
 };
 
 export const canCompareApiInspectorRunHistoryEntry = (
