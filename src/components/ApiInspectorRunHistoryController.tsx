@@ -96,7 +96,6 @@ export const ApiInspectorRunHistoryController = () => {
     const sourceLog = logs.find((log) => log.id === entry.sourceLogId);
     if (!sourceLog || !evaluateRequestReplayEligibility(sourceLog).replayable) return;
     setReplayHistoryEntry(entry);
-    setExpanded(false);
   };
 
   const clearWorkspaceHistory = (): void => {
