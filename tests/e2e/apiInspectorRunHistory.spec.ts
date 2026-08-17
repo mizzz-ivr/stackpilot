@@ -3,7 +3,7 @@ import { expect, test } from './fixtures/electronApp';
 const sourcePath = '/users/customer-123/orders?trace=public';
 const resultPath = '/users/customer-123/orders?trace=edited&flag=';
 
-test('再実行結果を履歴へ記録し、比較対象へ復元できる', async ({ appWindow }) => {
+test('再実行結果を履歴へ記録し、Query条件と比較対象を復元できる', async ({ appWindow }) => {
   await expect(appWindow.getByText('API Inspector')).toBeVisible();
 
   await appWindow.getByText(sourcePath, { exact: true }).locator('..').click();
@@ -26,11 +26,27 @@ test('再実行結果を履歴へ記録し、比較対象へ復元できる', as
   const historyControls = appWindow.getByRole('region', { name: 'API Inspector実行履歴', exact: true });
   await historyControls.getByRole('button', { name: '再実行履歴を開く', exact: true }).click();
 
-  const historyRegion = appWindow.getByRole('region', { name: '再実行履歴', exact: true });
+  let historyRegion = appWindow.getByRole('region', { name: '再実行履歴', exact: true });
   await expect(historyRegion.getByText(resultPath, { exact: true })).toBeVisible();
   await expect(historyRegion.getByText('HTTP 204', { exact: true })).toBeVisible();
   await expect(historyRegion.getByText('Query 2件', { exact: true })).toBeVisible();
 
+  await historyRegion.getByRole('button', {
+    name: '履歴のQuery条件をRequest Replayへ復元',
+    exact: true
+  }).click();
+
+  await expect(runDialog).toBeVisible();
+  await expect(runDialog.getByRole('status')).toContainText('再実行履歴のQuery条件2件をプレビューへ復元しました');
+  await expect(runDialog.getByRole('textbox', { name: 'Query名 1', exact: true })).toHaveValue('trace');
+  await expect(runDialog.getByRole('textbox', { name: 'Query値 1', exact: true })).toHaveValue('edited');
+  await expect(runDialog.getByRole('textbox', { name: 'Query名 2', exact: true })).toHaveValue('flag');
+  await expect(runDialog.getByRole('textbox', { name: 'Query値 2', exact: true })).toHaveValue('');
+  await expect(runDialog.getByLabel('Replay URL', { exact: true })).toContainText(resultPath);
+  await runDialog.getByRole('button', { name: '閉じる', exact: true }).click();
+
+  await historyControls.getByRole('button', { name: '再実行履歴を開く', exact: true }).click();
+  historyRegion = appWindow.getByRole('region', { name: '再実行履歴', exact: true });
   await historyRegion.getByRole('button', {
     name: '履歴の元通信と結果通信を比較対象へ復元',
     exact: true
