@@ -3,6 +3,7 @@ import { WorkspaceSidebar } from './components/WorkspaceSidebar';
 import { TopBar } from './components/TopBar';
 import { ApiLogPanel } from './components/ApiLogPanel';
 import { ApiLogComparisonController } from './components/ApiLogComparisonController';
+import { ApiInspectorRunHistoryController } from './components/ApiInspectorRunHistoryController';
 import { useAppStore } from './store/appStore';
 import { isProdEnvironment } from '../shared/domain/environment';
 import { RiskConfirmationDialog } from './components/RiskConfirmationDialog';
@@ -39,6 +40,7 @@ export const App = () => {
         </section>
         <ApiLogPanel />
       </main>
+      <ApiInspectorRunHistoryController />
       <ApiLogComparisonController />
       <RiskConfirmationDialog />
     </div>

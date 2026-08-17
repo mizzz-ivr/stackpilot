@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   maxApiLogComparisonTargets,
   selectComparisonLogs
@@ -17,6 +17,7 @@ export const ApiLogComparisonController = () => {
   const { logs, selectedLogId, comparisonLogIds } = useAppStore((state) => state.inspector);
   const toggleInspectorComparison = useAppStore((state) => state.toggleInspectorComparison);
   const clearInspectorComparison = useAppStore((state) => state.clearInspectorComparison);
+  const lastAutoOpenedVersionRef = useRef(0);
   const [isOpen, setIsOpen] = useState(false);
   const [differencesOnly, setDifferencesOnly] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -42,14 +43,21 @@ export const ApiLogComparisonController = () => {
   }, [activeWorkspaceId]);
 
   useEffect(() => {
-    if (
-      comparisonAutoOpenVersion > 0 &&
-      comparisonLogs.length === maxApiLogComparisonTargets
-    ) {
-      setDifferencesOnly(false);
-      setSaveFeedback(undefined);
-      setIsOpen(true);
+    if (comparisonAutoOpenVersion === 0) {
+      lastAutoOpenedVersionRef.current = 0;
+      return;
     }
+    if (
+      comparisonAutoOpenVersion <= lastAutoOpenedVersionRef.current ||
+      comparisonLogs.length !== maxApiLogComparisonTargets
+    ) {
+      return;
+    }
+
+    lastAutoOpenedVersionRef.current = comparisonAutoOpenVersion;
+    setDifferencesOnly(false);
+    setSaveFeedback(undefined);
+    setIsOpen(true);
   }, [comparisonAutoOpenVersion, comparisonLogs.length]);
 
   useEffect(() => {
