@@ -26,7 +26,7 @@ test('再実行結果を履歴へ記録し、Query条件と比較対象を復元
   const historyControls = appWindow.getByRole('region', { name: 'API Inspector実行履歴', exact: true });
   await historyControls.getByRole('button', { name: '再実行履歴を開く', exact: true }).click();
 
-  let historyRegion = appWindow.getByRole('region', { name: '再実行履歴', exact: true });
+  const historyRegion = appWindow.getByRole('region', { name: '再実行履歴', exact: true });
   await expect(historyRegion.getByText(resultPath, { exact: true })).toBeVisible();
   await expect(historyRegion.getByText('HTTP 204', { exact: true })).toBeVisible();
   await expect(historyRegion.getByText('Query 2件', { exact: true })).toBeVisible();
@@ -45,8 +45,7 @@ test('再実行結果を履歴へ記録し、Query条件と比較対象を復元
   await expect(runDialog.getByLabel('Replay URL', { exact: true })).toContainText(resultPath);
   await runDialog.getByRole('button', { name: '閉じる', exact: true }).click();
 
-  await historyControls.getByRole('button', { name: '再実行履歴を開く', exact: true }).click();
-  historyRegion = appWindow.getByRole('region', { name: '再実行履歴', exact: true });
+  await expect(historyRegion).toBeVisible();
   await historyRegion.getByRole('button', {
     name: '履歴の元通信と結果通信を比較対象へ復元',
     exact: true
