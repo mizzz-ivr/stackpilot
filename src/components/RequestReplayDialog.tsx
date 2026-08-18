@@ -15,6 +15,7 @@ import { useAppStore } from '../store/appStore';
 interface RequestReplayDialogProps {
   workspace: Pick<Workspace, 'id' | 'name' | 'environmentType'>;
   log: NetworkLog;
+  initialQueryEntries?: RequestReplayQueryEntry[];
   onClose: () => void;
 }
 
@@ -28,7 +29,12 @@ type QueryDraftEntry = RequestReplayQueryEntry & {
   original?: RequestReplayQueryEntry;
 };
 
-export const RequestReplayDialog = ({ workspace, log, onClose }: RequestReplayDialogProps) => {
+export const RequestReplayDialog = ({
+  workspace,
+  log,
+  initialQueryEntries,
+  onClose
+}: RequestReplayDialogProps) => {
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   const isExecutingRef = useRef(false);
@@ -38,7 +44,9 @@ export const RequestReplayDialog = ({ workspace, log, onClose }: RequestReplayDi
   );
   const [isExecuting, setIsExecuting] = useState(false);
   const [feedback, setFeedback] = useState<ReplayFeedback>();
-  const [queryDraft, setQueryDraft] = useState<QueryDraftEntry[]>(() => createQueryDraft(log.url));
+  const [queryDraft, setQueryDraft] = useState<QueryDraftEntry[]>(
+    () => createQueryDraft(log.url, initialQueryEntries)
+  );
   const eligibility = useMemo(() => evaluateRequestReplayEligibility(log), [log]);
   const isProduction = isProdEnvironment(workspace.environmentType);
   const queryEntries = useMemo<RequestReplayQueryEntry[]>(
@@ -68,10 +76,10 @@ export const RequestReplayDialog = ({ workspace, log, onClose }: RequestReplayDi
   }, [isExecuting]);
 
   useEffect(() => {
-    setQueryDraft(createQueryDraft(log.url));
+    setQueryDraft(createQueryDraft(log.url, initialQueryEntries));
     setFeedback(undefined);
     addedEntrySequenceRef.current = 0;
-  }, [log.id, log.url]);
+  }, [initialQueryEntries, log.id, log.url]);
 
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
@@ -217,6 +225,15 @@ export const RequestReplayDialog = ({ workspace, log, onClose }: RequestReplayDi
               <p className="break-all text-cyan-200" aria-label="Replay URL">{targetUrl}</p>
             </div>
           </section>
+
+          {initialQueryEntries ? (
+            <div
+              role="status"
+              className="rounded-lg border border-cyan-800/60 bg-cyan-950/30 p-3 text-xs leading-5 text-cyan-100"
+            >
+              再実行履歴のQuery条件{initialQueryEntries.length}件をプレビューへ復元しました。通信はまだ送信していません。内容を確認してから再実行してください。
+            </div>
+          ) : null}
 
           {eligibility.replayable ? (
             <section className="space-y-3" aria-label="Query editor">
@@ -366,13 +383,21 @@ export const RequestReplayDialog = ({ workspace, log, onClose }: RequestReplayDi
   );
 };
 
-const createQueryDraft = (sourceUrl: string): QueryDraftEntry[] => {
+const createQueryDraft = (
+  sourceUrl: string,
+  initialQueryEntries?: RequestReplayQueryEntry[]
+): QueryDraftEntry[] => {
   try {
-    return parseRequestReplayQueryEntries(sourceUrl).map((entry, index) => ({
-      ...entry,
-      id: `original-${index}`,
-      original: { ...entry }
-    }));
+    const originalEntries = parseRequestReplayQueryEntries(sourceUrl);
+    const targetEntries = initialQueryEntries ?? originalEntries;
+    return targetEntries.map((entry, index) => {
+      const original = originalEntries[index];
+      return {
+        ...entry,
+        id: original ? `original-${index}` : `restored-${index}`,
+        ...(original ? { original: { ...original } } : {})
+      };
+    });
   } catch {
     return [];
   }

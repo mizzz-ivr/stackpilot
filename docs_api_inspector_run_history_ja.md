@@ -4,6 +4,8 @@
 
 API Inspectorで同じ通信条件を調査するとき、直前の再実行結果を見失わず、元通信と結果通信の比較へ戻れるようにする。
 
+加えて、過去に使用したQuery条件を既存のRequest Replayプレビューへ復元し、条件を手入力し直さずに再確認できるようにする。
+
 ## 対象
 
 自動比較まで成立した再実行結果を履歴として記録する。
@@ -40,6 +42,8 @@ Request / Response body、Request / Response headers、通信エラー詳細は�
 
 通常の手動比較や、履歴から比較対象を復元した操作では新しい履歴を作らない。
 
+履歴からQuery条件を復元して再実行し、その結果通信の自動比較まで成立した場合は、新しい再実行として通常どおり履歴へ追加する。
+
 ## Query
 
 履歴のQueryは結果ログのURLをURL APIで解析して取得する。
@@ -49,6 +53,42 @@ Request / Response body、Request / Response headers、通信エラー詳細は�
 - URLを解析できない場合は空配列として扱う
 
 履歴表示ではQueryの件数と結果URLを確認できる。値を別途永続化しない。
+
+## Request Replayプレビューへの復元
+
+元通信ログが現在rendererに保持され、既存のRequest Replay対象条件を満たす場合だけ「この条件で再実行」を有効にする。
+
+操作時は履歴から直接通信を送信せず、既存のRequest Replayプレビューを開いて次だけを復元する。
+
+- Query parameterのname
+- Query parameterのvalue
+- 同名parameterの出現順
+- 空value
+
+次は履歴から復元しない。
+
+- origin
+- path
+- Request headers
+- Request body
+- Authorization
+- Cookie
+- custom header
+
+origin / pathは元通信ログを基準に既存のmain process側処理で再構築する。履歴から完全URLをmain processへ送信しない。
+
+プレビューを開いただけでは通信を送信しない。ユーザーが内容を確認して既存の「再実行」を押した場合だけ、従来のRequest Replay処理へ進む。
+
+既存の安全境界をそのまま維持する。
+
+- GET / HEADのみ
+- Request bodyを持つ通信は対象外
+- Query件数・文字数・encoded長の既存validationを再利用
+- PROD Workspaceではmain processのElectronネイティブ確認を必須化
+- 同一ログの並列Replayをmain processで拒否
+- 元Authorization / Cookie / custom header / bodyをコピーしない
+
+履歴のQueryが現在のvalidation条件を満たさない場合はプレビュー内でエラー表示し、再実行を無効化する。
 
 ## 比較への復元
 
@@ -67,9 +107,11 @@ Request / Response body、Request / Response headers、通信エラー詳細は�
 
 rendererのAPIログは最大500件である。履歴のためだけにログ保持上限を変更しない。
 
-元通信または結果通信が500件の表示保持範囲から外れた場合は、履歴メタデータを残したまま「比較へ復元」を無効化し、「比較ログ保持外」と表示する。
+元通信ログが保持範囲から外れた場合は「この条件で再実行」を無効化し、「元ログ保持外」と表示する。
 
-main process側のAPIログ保持上限や収集方式は変更しない。
+元通信または結果通信が保持範囲から外れ、比較A/Bを復元できない場合は「比較へ復元」を無効化し、「比較ログ保持外」と表示する。
+
+履歴メタデータ自体は残す。main process側のAPIログ保持上限や収集方式は変更しない。
 
 ## クリア
 
@@ -79,11 +121,14 @@ main process側のAPIログ保持上限や収集方式は変更しない。
 
 ## セキュリティ
 
-- 履歴生成のために新しいIPCを追加しない
+- 履歴生成・Query復元のために新しいIPCを追加しない
+- 履歴から直接Replayを実行しない
 - raw bodyを取得しない
 - headerを履歴へ複製しない
 - 認証情報を追加取得しない
 - 既存の安全化済みNetworkLogだけを参照する
+- Replay実行時は既存のmain process再検証を必ず通す
+- PRODのネイティブ確認を迂回しない
 - 外部サービスへ履歴を送信しない
 - 保存機能を追加しない
 
@@ -91,7 +136,9 @@ main process側のAPIログ保持上限や収集方式は変更しない。
 
 - 履歴の永続化
 - 履歴のエクスポート
-- 履歴から同条件をワンクリックで再実行
+- 履歴から確認なしで直接再実行
+- POST / PUT / PATCH / DELETEのReplay
+- header / bodyの復元・編集
 - 複数履歴の一括比較
 - 履歴の検索・タグ・ピン留め
 - Mobile Inspectorへの履歴同期
@@ -114,6 +161,10 @@ main process側のAPIログ保持上限や収集方式は変更しない。
 
 - 再実行後に履歴が追加される
 - 結果URL、status、Query件数を表示する
+- 履歴からRequest Replayプレビューを開く
+- 過去のQuery名・値・空valueをプレビューへ復元する
+- Replay URLが元通信のorigin / pathと履歴Queryの組み合わせになる
+- プレビューを開いただけでは通信を送信しない
 - 比較対象を全解除する
 - 履歴から元通信と結果通信を比較A/Bへ復元する
 - 既存の比較画面を再度開ける
