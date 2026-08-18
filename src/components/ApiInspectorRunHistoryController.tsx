@@ -1,26 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  appendApiInspectorRunHistory,
   canCompareApiInspectorRunHistoryEntry,
-  clearApiInspectorRunHistory,
-  parseApiInspectorRunQueryEntries,
   selectApiInspectorRunHistory,
   type ApiInspectorRunHistoryEntry
 } from '../../shared/domain/apiInspectorRunHistory';
 import { formatDurationLabel, toPathLabel } from '../../shared/domain/inspector';
 import { evaluateRequestReplayEligibility } from '../../shared/domain/requestReplay';
+import { useApiInspectorRunHistoryStore } from '../store/apiInspectorRunHistoryStore';
 import { useAppStore } from '../store/appStore';
 import { RequestReplayDialog } from './RequestReplayDialog';
 
 export const ApiInspectorRunHistoryController = () => {
   const activeWorkspace = useAppStore((state) => state.activeWorkspace);
   const activeWorkspaceId = useAppStore((state) => state.activeWorkspaceId);
-  const comparisonAutoOpenVersion = useAppStore((state) => state.comparisonAutoOpenVersion);
-  const { logs, comparisonLogIds } = useAppStore((state) => state.inspector);
+  const logs = useAppStore((state) => state.inspector.logs);
   const clearInspectorComparison = useAppStore((state) => state.clearInspectorComparison);
   const toggleInspectorComparison = useAppStore((state) => state.toggleInspectorComparison);
-  const lastRecordedVersionRef = useRef(0);
-  const [history, setHistory] = useState<ApiInspectorRunHistoryEntry[]>([]);
+  const history = useApiInspectorRunHistoryStore((state) => state.history);
+  const clearHistoryWorkspace = useApiInspectorRunHistoryStore((state) => state.clearWorkspace);
   const [expanded, setExpanded] = useState(false);
   const [replayHistoryEntry, setReplayHistoryEntry] = useState<ApiInspectorRunHistoryEntry>();
 
@@ -28,18 +25,10 @@ export const ApiInspectorRunHistoryController = () => {
     () => selectApiInspectorRunHistory(history, activeWorkspaceId),
     [activeWorkspaceId, history]
   );
-  const comparisonLogs = useMemo(() => {
-    const logById = new Map(logs.map((log) => [log.id, log]));
-    return comparisonLogIds
-      .map((logId) => logById.get(logId))
-      .filter((log): log is NonNullable<typeof log> => Boolean(log));
-  }, [comparisonLogIds, logs]);
-  const replaySourceLog = useMemo(
-    () => replayHistoryEntry
-      ? logs.find((log) => log.id === replayHistoryEntry.sourceLogId)
-      : undefined,
-    [logs, replayHistoryEntry]
-  );
+  const logById = useMemo(() => new Map(logs.map((log) => [log.id, log])), [logs]);
+  const replaySourceLog = replayHistoryEntry
+    ? logById.get(replayHistoryEntry.sourceLogId)
+    : undefined;
 
   useEffect(() => {
     setExpanded(false);
@@ -50,40 +39,6 @@ export const ApiInspectorRunHistoryController = () => {
     if (replayHistoryEntry && !replaySourceLog) setReplayHistoryEntry(undefined);
   }, [replayHistoryEntry, replaySourceLog]);
 
-  useEffect(() => {
-    if (
-      comparisonAutoOpenVersion <= 0 ||
-      comparisonAutoOpenVersion <= lastRecordedVersionRef.current ||
-      !activeWorkspaceId ||
-      comparisonLogs.length !== 2
-    ) {
-      return;
-    }
-
-    const [sourceLog, resultLog] = comparisonLogs;
-    if (
-      sourceLog.workspaceId !== activeWorkspaceId ||
-      resultLog.workspaceId !== activeWorkspaceId ||
-      sourceLog.id === resultLog.id
-    ) {
-      return;
-    }
-
-    setHistory((current) => appendApiInspectorRunHistory(current, {
-      id: `${activeWorkspaceId}:${comparisonAutoOpenVersion}:${resultLog.id}`,
-      workspaceId: activeWorkspaceId,
-      sourceLogId: sourceLog.id,
-      resultLogId: resultLog.id,
-      method: resultLog.method,
-      targetUrl: resultLog.url,
-      queryEntries: parseApiInspectorRunQueryEntries(resultLog.url),
-      responseStatus: resultLog.status,
-      durationMs: resultLog.durationMs,
-      executedAt: resultLog.startedAt
-    }));
-    lastRecordedVersionRef.current = comparisonAutoOpenVersion;
-  }, [activeWorkspaceId, comparisonAutoOpenVersion, comparisonLogs]);
-
   const restoreComparison = (entry: ApiInspectorRunHistoryEntry): void => {
     if (!entry.resultLogId || !canCompareApiInspectorRunHistoryEntry(entry, logs)) return;
     clearInspectorComparison();
@@ -93,14 +48,14 @@ export const ApiInspectorRunHistoryController = () => {
   };
 
   const restoreReplayPreview = (entry: ApiInspectorRunHistoryEntry): void => {
-    const sourceLog = logs.find((log) => log.id === entry.sourceLogId);
+    const sourceLog = logById.get(entry.sourceLogId);
     if (!sourceLog || !evaluateRequestReplayEligibility(sourceLog).replayable) return;
     setReplayHistoryEntry(entry);
   };
 
   const clearWorkspaceHistory = (): void => {
     if (!activeWorkspaceId) return;
-    setHistory((current) => clearApiInspectorRunHistory(current, activeWorkspaceId));
+    clearHistoryWorkspace(activeWorkspaceId);
   };
 
   return (
@@ -144,12 +99,12 @@ export const ApiInspectorRunHistoryController = () => {
           >
             {workspaceHistory.length === 0 ? (
               <p className="rounded-lg border border-dashed border-slate-800 px-3 py-3 text-[10px] leading-4 text-slate-500">
-                このWorkspaceでは再実行結果をまだ捕捉していません。
+                このWorkspaceには再実行履歴がありません。
               </p>
             ) : (
               workspaceHistory.map((entry) => {
                 const comparisonAvailable = canCompareApiInspectorRunHistoryEntry(entry, logs);
-                const sourceLog = logs.find((log) => log.id === entry.sourceLogId);
+                const sourceLog = logById.get(entry.sourceLogId);
                 const replayEligibility = sourceLog
                   ? evaluateRequestReplayEligibility(sourceLog)
                   : undefined;
@@ -171,7 +126,11 @@ export const ApiInspectorRunHistoryController = () => {
                         <span>Query {entry.queryEntries.length}件</span>
                         {!sourceLog ? <span className="text-amber-400/80">元ログ保持外</span> : null}
                         {sourceLog && !replayAvailable ? <span className="text-amber-400/80">再実行対象外</span> : null}
-                        {!comparisonAvailable ? <span className="text-amber-400/80">比較ログ保持外</span> : null}
+                        {!entry.resultLogId ? (
+                          <span className="text-amber-400/80">結果ログ未捕捉</span>
+                        ) : !comparisonAvailable ? (
+                          <span className="text-amber-400/80">比較ログ保持外</span>
+                        ) : null}
                       </div>
                       <div className="flex flex-wrap items-center justify-end gap-1.5">
                         <button
