@@ -6,17 +6,19 @@ API Inspectorで同じ通信条件を調査するとき、直前の再実行結�
 
 加えて、過去に使用したQuery条件を既存のRequest Replayプレビューへ復元し、条件を手入力し直さずに再確認できるようにする。
 
+Request Replay自体は成功したものの結果通信ログの自動捕捉に失敗した場合も、実行条件とHTTP結果を履歴へ残し、同条件の再確認を継続できるようにする。
+
 ## 対象
 
-自動比較まで成立した再実行結果を履歴として記録する。
+`api-log:replay`が`status: replayed`を返した成功実行を履歴として記録する。
 
 履歴へ保持する情報は次のとおり。
 
 - Workspace ID
 - 元通信ログID
-- 結果通信ログID
+- 結果通信ログID（捕捉できた場合のみ）
 - Method
-- 結果URL
+- Replay target URL
 - Query parameterのname / value
 - HTTP status
 - Duration
@@ -30,33 +32,44 @@ Request / Response body、Request / Response headers、通信エラー詳細は�
 - 新しい履歴を先頭へ追加
 - 21件目以降は古い履歴から削除
 - rendererのメモリだけに保持
+- 専用のrenderer-only Zustand storeで管理
 - ファイル、localStorage、electron-storeへ永続化しない
 - アプリ再読み込み・再起動で履歴を破棄
 - Workspace切替では履歴を破棄せず、対象Workspaceの履歴だけを表示
 
 ## 履歴へ記録するタイミング
 
-既存の自動比較が成立し、比較A/Bへ元通信と結果通信が揃ったタイミングで1件記録する。
+履歴記録の起点は自動比較の成立ではなく、Request Replayの成功結果とする。
 
-この方式により、結果通信を捕捉できなかった再実行は履歴へ記録しない。結果ログが存在しない履歴を作らず、「履歴から比較へ戻る」という機能目的を優先する。
+`RequestReplayDialog`が`status: replayed`を受け取った時点で、実行時に確定していたQueryとReplay target URL、およびmain processから返されたHTTP status / durationを1件記録する。
 
-通常の手動比較や、履歴から比較対象を復元した操作では新しい履歴を作らない。
+- `replayedLogId`あり: 結果ログIDを履歴へ保持し、既存の自動比較要求も行う
+- `replayedLogId`なし: 結果ログIDなしで履歴へ保持し、Replay成功扱いを維持する
+- `status: cancelled`: 履歴へ追加しない
+- `status: failed`: 履歴へ追加しない
+- IPC呼び出し自体が例外終了: 履歴へ追加しない
 
-履歴からQuery条件を復元して再実行し、その結果通信の自動比較まで成立した場合は、新しい再実行として通常どおり履歴へ追加する。
+この方式により、結果ログcaptureのbest-effort性を履歴保存へ波及させない。
 
-## Query
+履歴からQuery条件を復元して再実行し、そのReplayが成功した場合も新しい履歴として通常どおり追加する。
 
-履歴のQueryは結果ログのURLをURL APIで解析して取得する。
+## Query / Replay target URL
+
+履歴へ保存するQueryは、実行直前に既存Query editorでvalidation済みのname / value配列をコピーして保持する。
 
 - 同名parameterは出現順を維持
 - 空valueを保持
-- URLを解析できない場合は空配列として扱う
+- Query件数・name長・value長・encoded長は既存Request Replay validationを通過済み
 
-履歴表示ではQueryの件数と結果URLを確認できる。値を別途永続化しない。
+Replay target URLは、元通信URLと実行Queryから既存`createRequestReplayTargetUrl`で生成した値を保持する。
+
+履歴のために結果通信URLを新しく取得せず、完全URLを新規IPC payloadとしてmain processへ送信しない。
 
 ## Request Replayプレビューへの復元
 
 元通信ログが現在rendererに保持され、既存のRequest Replay対象条件を満たす場合だけ「この条件で再実行」を有効にする。
+
+結果ログを捕捉できなかった履歴でも、元通信ログが残っている限りこの操作は利用できる。
 
 操作時は履歴から直接通信を送信せず、既存のRequest Replayプレビューを開いて次だけを復元する。
 
@@ -88,11 +101,11 @@ origin / pathは元通信ログを基準に既存のmain process側処理で再�
 - 同一ログの並列Replayをmain processで拒否
 - 元Authorization / Cookie / custom header / bodyをコピーしない
 
-履歴のQueryが現在のvalidation条件を満たさない場合はプレビュー内でエラー表示し、再実行を無効化する。
+履歴のQueryが将来validation条件の変更等で現在の条件を満たさない場合はプレビュー内でエラー表示し、再実行を無効化する。
 
 ## 比較への復元
 
-履歴の元通信ログIDと結果通信ログIDが、現在rendererが保持するAPIログ内に両方存在する場合だけ「比較へ復元」を有効にする。
+履歴に結果通信ログIDがあり、元通信ログIDと結果通信ログIDの両方が現在rendererのAPIログ内に存在する場合だけ「比較へ復元」を有効にする。
 
 復元時は次を行う。
 
@@ -103,13 +116,22 @@ origin / pathは元通信ログを基準に既存のmain process側処理で再�
 
 比較Dialog、主要差分サマリー、安全化済み比較JSON保存は既存機能をそのまま再利用する。
 
-## ログ保持外
+## 結果ログ未捕捉・ログ保持外
+
+結果ログを自動捕捉できず`replayedLogId`がない場合は、履歴へ「結果ログ未捕捉」と表示する。
+
+この場合:
+
+- HTTP status / duration / Replay target URL / Queryは表示できる
+- 「この条件で再実行」は元ログが残る限り利用可能
+- 「比較へ復元」は無効
+- Replay自体は成功扱いを維持
 
 rendererのAPIログは最大500件である。履歴のためだけにログ保持上限を変更しない。
 
 元通信ログが保持範囲から外れた場合は「この条件で再実行」を無効化し、「元ログ保持外」と表示する。
 
-元通信または結果通信が保持範囲から外れ、比較A/Bを復元できない場合は「比較へ復元」を無効化し、「比較ログ保持外」と表示する。
+結果ログIDはあるが元通信または結果通信が保持範囲から外れ、比較A/Bを復元できない場合は「比較へ復元」を無効化し、「比較ログ保持外」と表示する。
 
 履歴メタデータ自体は残す。main process側のAPIログ保持上限や収集方式は変更しない。
 
@@ -122,11 +144,12 @@ rendererのAPIログは最大500件である。履歴のためだけにログ保
 ## セキュリティ
 
 - 履歴生成・Query復元のために新しいIPCを追加しない
+- `api-log:replay`の既存request / response契約を変更しない
+- 結果ログcaptureのために追跡用header / query / Cookieを追加しない
 - 履歴から直接Replayを実行しない
 - raw bodyを取得しない
 - headerを履歴へ複製しない
 - 認証情報を追加取得しない
-- 既存の安全化済みNetworkLogだけを参照する
 - Replay実行時は既存のmain process再検証を必ず通す
 - PRODのネイティブ確認を迂回しない
 - 外部サービスへ履歴を送信しない
@@ -134,6 +157,7 @@ rendererのAPIログは最大500件である。履歴のためだけにログ保
 
 ## 対象外
 
+- Replay結果capture自体の成功率改善
 - 履歴の永続化
 - 履歴のエクスポート
 - 履歴から確認なしで直接再実行
@@ -142,7 +166,6 @@ rendererのAPIログは最大500件である。履歴のためだけにログ保
 - 複数履歴の一括比較
 - 履歴の検索・タグ・ピン留め
 - Mobile Inspectorへの履歴同期
-- 結果ログを捕捉できなかった実行の履歴化
 
 ## テスト観点
 
@@ -153,18 +176,28 @@ rendererのAPIログは最大500件である。履歴のためだけにログ保
 - 同一IDを重複させない
 - 他Workspaceの履歴を保持する
 - Workspace単位でクリアする
-- 同名Queryを出現順で解析する
-- 不正URLを安全に処理する
+- 同名Queryを出現順で保持する
 - 元ログと結果ログの両方がある場合だけ比較可能にする
+- `resultLogId`なしでは比較不可にする
 
 ### Electron E2E
 
+#### capture成功
+
 - 再実行後に履歴が追加される
-- 結果URL、status、Query件数を表示する
+- Replay target URL、status、Query件数を表示する
 - 履歴からRequest Replayプレビューを開く
 - 過去のQuery名・値・空valueをプレビューへ復元する
-- Replay URLが元通信のorigin / pathと履歴Queryの組み合わせになる
-- プレビューを開いただけでは通信を送信しない
 - 比較対象を全解除する
 - 履歴から元通信と結果通信を比較A/Bへ復元する
 - 既存の比較画面を再度開ける
+
+#### captureなし成功
+
+- Request Replayは成功し、HTTP status / durationを表示する
+- 自動比較は開始しない
+- 成功した実行条件を履歴へ追加する
+- 「結果ログ未捕捉」と表示する
+- 「比較へ復元」を無効化する
+- 「この条件で再実行」は利用可能
+- 履歴QueryをRequest Replayプレビューへ復元できる

@@ -10,6 +10,7 @@ import {
   type RequestReplayQueryEntry
 } from '../../shared/domain/requestReplay';
 import { formatDurationLabel, type NetworkLog } from '../../shared/domain/inspector';
+import { useApiInspectorRunHistoryStore } from '../store/apiInspectorRunHistoryStore';
 import { useAppStore } from '../store/appStore';
 
 interface RequestReplayDialogProps {
@@ -42,6 +43,7 @@ export const RequestReplayDialog = ({
   const queueInspectorReplayComparison = useAppStore(
     (state) => state.queueInspectorReplayComparison
   );
+  const recordInspectorRun = useApiInspectorRunHistoryStore((state) => state.recordRun);
   const [isExecuting, setIsExecuting] = useState(false);
   const [feedback, setFeedback] = useState<ReplayFeedback>();
   const [queryDraft, setQueryDraft] = useState<QueryDraftEntry[]>(
@@ -141,6 +143,9 @@ export const RequestReplayDialog = ({
 
   const executeReplay = async (): Promise<void> => {
     if (!eligibility.replayable || !queryValidation.valid || isExecutingRef.current) return;
+    const executedAt = Date.now();
+    const executedQueryEntries = queryEntries.map((entry) => ({ ...entry }));
+    const executedTargetUrl = targetUrl;
     isExecutingRef.current = true;
     setIsExecuting(true);
     setFeedback(undefined);
@@ -149,21 +154,35 @@ export const RequestReplayDialog = ({
       const result = await window.stackpilot.apiLog.replay({
         workspaceId: workspace.id,
         logId: log.id,
-        queryEntries
+        queryEntries: executedQueryEntries
       });
       if (result.status === 'cancelled') {
         setFeedback({ kind: 'info', message: '本番環境の確認でRequest Replayをキャンセルしました。' });
       } else if (result.status === 'failed') {
         setFeedback({ kind: 'error', message: result.errorMessage });
-      } else if (result.replayedLogId) {
-        queueInspectorReplayComparison(log.id, result.replayedLogId);
-        openComparison = true;
       } else {
-        const changeLabel = queryDiff.total > 0 ? ` Query変更${queryDiff.total}件を適用しました。` : '';
-        setFeedback({
-          kind: 'success',
-          message: `再実行しました。HTTP ${result.responseStatus} / ${formatDurationLabel(result.durationMs)}。${changeLabel} 通信ログの自動捕捉ができなかったため、APIログ一覧から結果を確認してください。`
+        recordInspectorRun({
+          workspaceId: workspace.id,
+          sourceLogId: log.id,
+          ...(result.replayedLogId ? { resultLogId: result.replayedLogId } : {}),
+          method: eligibility.method,
+          targetUrl: executedTargetUrl,
+          queryEntries: executedQueryEntries,
+          responseStatus: result.responseStatus,
+          durationMs: result.durationMs,
+          executedAt
         });
+
+        if (result.replayedLogId) {
+          queueInspectorReplayComparison(log.id, result.replayedLogId);
+          openComparison = true;
+        } else {
+          const changeLabel = queryDiff.total > 0 ? ` Query変更${queryDiff.total}件を適用しました。` : '';
+          setFeedback({
+            kind: 'success',
+            message: `再実行しました。HTTP ${result.responseStatus} / ${formatDurationLabel(result.durationMs)}。${changeLabel} 通信ログの自動捕捉はできませんでしたが、再実行条件は履歴に残しました。APIログ一覧から結果を確認してください。`
+          });
+        }
       }
     } catch {
       setFeedback({ kind: 'error', message: 'Request Replayを実行できませんでした。' });

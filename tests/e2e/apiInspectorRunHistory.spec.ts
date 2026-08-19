@@ -2,6 +2,7 @@ import { expect, test } from './fixtures/electronApp';
 
 const sourcePath = '/users/customer-123/orders?trace=public';
 const resultPath = '/users/customer-123/orders?trace=edited&flag=';
+const uncapturedResultPath = '/users/customer-123/orders?trace=fallback&__stackpilotE2eCapture=miss';
 
 test('再実行結果を履歴へ記録し、Query条件と比較対象を復元できる', async ({ appWindow }) => {
   await expect(appWindow.getByText('API Inspector')).toBeVisible();
@@ -61,4 +62,47 @@ test('再実行結果を履歴へ記録し、Query条件と比較対象を復元
   await expect(comparisonDialog).toBeVisible();
   await expect(comparisonDialog.getByText(sourcePath, { exact: true }).first()).toBeVisible();
   await expect(comparisonDialog.getByText(resultPath, { exact: true }).first()).toBeVisible();
+});
+
+test('結果ログを捕捉できなくても成功Replayを履歴へ残しQuery条件を復元できる', async ({ appWindow }) => {
+  await expect(appWindow.getByText('API Inspector')).toBeVisible();
+
+  await appWindow.getByText(sourcePath, { exact: true }).locator('..').click();
+  await appWindow.getByRole('button', { name: /Replayを確認/ }).click();
+
+  const runDialog = appWindow.getByRole('dialog', { name: /Request Replay/ });
+  await runDialog.getByRole('textbox', { name: 'Query値 1', exact: true }).fill('fallback');
+  await runDialog.getByRole('button', { name: 'Query parameterを追加', exact: true }).click();
+  await runDialog.getByRole('textbox', { name: 'Query名 2', exact: true }).fill('__stackpilotE2eCapture');
+  await runDialog.getByRole('textbox', { name: 'Query値 2', exact: true }).fill('miss');
+  await runDialog.getByRole('button', { name: /安全に再実行/ }).click();
+
+  await expect(runDialog.getByRole('status')).toContainText('再実行条件は履歴に残しました');
+  await expect(runDialog.getByRole('status')).toContainText('HTTP 202');
+  await runDialog.getByRole('button', { name: '閉じる', exact: true }).click();
+
+  const historyControls = appWindow.getByRole('region', { name: 'API Inspector実行履歴', exact: true });
+  await historyControls.getByRole('button', { name: '再実行履歴を開く', exact: true }).click();
+  const historyRegion = appWindow.getByRole('region', { name: '再実行履歴', exact: true });
+
+  await expect(historyRegion.getByText(uncapturedResultPath, { exact: true })).toBeVisible();
+  await expect(historyRegion.getByText('HTTP 202', { exact: true })).toBeVisible();
+  await expect(historyRegion.getByText('Query 2件', { exact: true })).toBeVisible();
+  await expect(historyRegion.getByText('結果ログ未捕捉', { exact: true })).toBeVisible();
+  await expect(historyRegion.getByRole('button', {
+    name: '履歴の元通信と結果通信を比較対象へ復元',
+    exact: true
+  })).toBeDisabled();
+
+  await historyRegion.getByRole('button', {
+    name: '履歴のQuery条件をRequest Replayへ復元',
+    exact: true
+  }).click();
+
+  await expect(runDialog).toBeVisible();
+  await expect(runDialog.getByRole('textbox', { name: 'Query名 1', exact: true })).toHaveValue('trace');
+  await expect(runDialog.getByRole('textbox', { name: 'Query値 1', exact: true })).toHaveValue('fallback');
+  await expect(runDialog.getByRole('textbox', { name: 'Query名 2', exact: true })).toHaveValue('__stackpilotE2eCapture');
+  await expect(runDialog.getByRole('textbox', { name: 'Query値 2', exact: true })).toHaveValue('miss');
+  await expect(runDialog.getByLabel('Replay URL', { exact: true })).toContainText(uncapturedResultPath);
 });

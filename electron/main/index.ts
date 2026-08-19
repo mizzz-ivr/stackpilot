@@ -66,8 +66,15 @@ const createWindow = async (): Promise<void> => {
   registerHandlers(mainWindow, workspaceService, browserViewManager, apiLogService, mobileInspectorServer, {
     disableBrowserNavigation: e2eMode,
     requestReplayExecutor: e2eMode
-      ? async () => {
+      ? async (_workspaceId, _method, url) => {
           if (!e2eApiLogFixture) return { status: 'failed', durationMs: 0 };
+          if (new URL(url).searchParams.get('__stackpilotE2eCapture') === 'miss') {
+            return {
+              status: 'replayed',
+              responseStatus: 202,
+              durationMs: 55
+            };
+          }
           const replayedLogId = await e2eApiLogFixture.seedReplayResult();
           return {
             status: 'replayed',
