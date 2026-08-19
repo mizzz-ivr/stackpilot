@@ -18,25 +18,53 @@ export interface ApiInspectorRunHistoryEntry {
   responseStatus?: number;
   durationMs?: number;
   executedAt: number;
+  isPinned: boolean;
 }
 
 export const appendApiInspectorRunHistory = (
   history: ApiInspectorRunHistoryEntry[],
   entry: ApiInspectorRunHistoryEntry
 ): ApiInspectorRunHistoryEntry[] => {
-  let workspaceEntryCount = 0;
-  return [entry, ...history.filter((item) => item.id !== entry.id)].filter((item) => {
-    if (item.workspaceId !== entry.workspaceId) return true;
-    workspaceEntryCount += 1;
-    return workspaceEntryCount <= maxApiInspectorRunHistoryEntriesPerWorkspace;
-  });
+  const candidateHistory = [entry, ...history.filter((item) => item.id !== entry.id)];
+  const workspaceEntries = candidateHistory.filter((item) => item.workspaceId === entry.workspaceId);
+  const [newestEntry, ...existingEntries] = workspaceEntries;
+  const prioritizedEntries = newestEntry
+    ? [
+        newestEntry,
+        ...existingEntries.filter((item) => item.isPinned),
+        ...existingEntries.filter((item) => !item.isPinned)
+      ]
+    : [];
+  const retainedIds = new Set(
+    prioritizedEntries
+      .slice(0, maxApiInspectorRunHistoryEntriesPerWorkspace)
+      .map((item) => item.id)
+  );
+
+  return candidateHistory.filter(
+    (item) => item.workspaceId !== entry.workspaceId || retainedIds.has(item.id)
+  );
 };
 
 export const selectApiInspectorRunHistory = (
   history: ApiInspectorRunHistoryEntry[],
   workspaceId?: string
+): ApiInspectorRunHistoryEntry[] => {
+  if (!workspaceId) return [];
+  const workspaceEntries = history.filter((entry) => entry.workspaceId === workspaceId);
+  return [
+    ...workspaceEntries.filter((entry) => entry.isPinned),
+    ...workspaceEntries.filter((entry) => !entry.isPinned)
+  ];
+};
+
+export const toggleApiInspectorRunHistoryPin = (
+  history: ApiInspectorRunHistoryEntry[],
+  entryId: string
 ): ApiInspectorRunHistoryEntry[] =>
-  workspaceId ? history.filter((entry) => entry.workspaceId === workspaceId) : [];
+  history.map((entry) =>
+    entry.id === entryId ? { ...entry, isPinned: !entry.isPinned } : entry
+  );
 
 export const clearApiInspectorRunHistory = (
   history: ApiInspectorRunHistoryEntry[],
