@@ -4,7 +4,7 @@ const sourcePath = '/users/customer-123/orders?trace=public';
 const resultPath = '/users/customer-123/orders?trace=edited&flag=';
 const uncapturedResultPath = '/users/customer-123/orders?trace=fallback&__stackpilotE2eCapture=miss';
 
-test('再実行結果を履歴へ記録し、Query条件と比較対象を復元できる', async ({ appWindow }) => {
+test('再実行履歴をピン留めし、Query条件と比較対象を復元できる', async ({ appWindow }) => {
   await expect(appWindow.getByText('API Inspector')).toBeVisible();
 
   await appWindow.getByText(sourcePath, { exact: true }).locator('..').click();
@@ -32,6 +32,12 @@ test('再実行結果を履歴へ記録し、Query条件と比較対象を復元
   await expect(historyRegion.getByText('HTTP 204', { exact: true })).toBeVisible();
   await expect(historyRegion.getByText('Query 2件', { exact: true })).toBeVisible();
 
+  const pinButton = historyRegion.getByRole('button', { name: '再実行履歴をピン留め', exact: true });
+  await expect(pinButton).toHaveAttribute('aria-pressed', 'false');
+  await pinButton.click();
+  const unpinButton = historyRegion.getByRole('button', { name: '再実行履歴のピン留めを解除', exact: true });
+  await expect(unpinButton).toHaveAttribute('aria-pressed', 'true');
+
   await historyRegion.getByRole('button', {
     name: '履歴のQuery条件をRequest Replayへ復元',
     exact: true
@@ -47,6 +53,13 @@ test('再実行結果を履歴へ記録し、Query条件と比較対象を復元
   await runDialog.getByRole('button', { name: '閉じる', exact: true }).click();
 
   await expect(historyRegion).toBeVisible();
+  await expect(unpinButton).toHaveAttribute('aria-pressed', 'true');
+  await unpinButton.click();
+  await expect(historyRegion.getByRole('button', {
+    name: '再実行履歴をピン留め',
+    exact: true
+  })).toHaveAttribute('aria-pressed', 'false');
+
   await historyRegion.getByRole('button', {
     name: '履歴の元通信と結果通信を比較対象へ復元',
     exact: true
