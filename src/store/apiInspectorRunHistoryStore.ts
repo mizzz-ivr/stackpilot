@@ -2,14 +2,16 @@ import { create } from 'zustand';
 import {
   appendApiInspectorRunHistory,
   clearApiInspectorRunHistory,
+  toggleApiInspectorRunHistoryPin,
   type ApiInspectorRunHistoryEntry
 } from '../../shared/domain/apiInspectorRunHistory';
 
-export type ApiInspectorRunHistoryDraft = Omit<ApiInspectorRunHistoryEntry, 'id'>;
+export type ApiInspectorRunHistoryDraft = Omit<ApiInspectorRunHistoryEntry, 'id' | 'isPinned'>;
 
 interface ApiInspectorRunHistoryState {
   history: ApiInspectorRunHistoryEntry[];
   recordRun: (entry: ApiInspectorRunHistoryDraft) => void;
+  togglePin: (entryId: string) => void;
   clearWorkspace: (workspaceId: string) => void;
 }
 
@@ -20,7 +22,12 @@ export const useApiInspectorRunHistoryStore = create<ApiInspectorRunHistoryState
   recordRun: (entry) => {
     const id = `${entry.workspaceId}:${entry.sourceLogId}:${entry.executedAt}:${historyEntrySequence++}`;
     set((state) => ({
-      history: appendApiInspectorRunHistory(state.history, { ...entry, id })
+      history: appendApiInspectorRunHistory(state.history, { ...entry, id, isPinned: false })
+    }));
+  },
+  togglePin: (entryId) => {
+    set((state) => ({
+      history: toggleApiInspectorRunHistoryPin(state.history, entryId)
     }));
   },
   clearWorkspace: (workspaceId) => {
