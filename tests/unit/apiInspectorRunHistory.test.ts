@@ -6,6 +6,7 @@ import {
   maxApiInspectorRunHistoryEntriesPerWorkspace,
   parseApiInspectorRunQueryEntries,
   selectApiInspectorRunHistory,
+  toggleApiInspectorRunHistoryPin,
   type ApiInspectorRunHistoryEntry
 } from '../../shared/domain/apiInspectorRunHistory';
 import type { NetworkLog } from '../../shared/domain/inspector';
@@ -25,6 +26,7 @@ const createHistoryEntry = (
   responseStatus: 200,
   durationMs: 80,
   executedAt: 1_000,
+  isPinned: false,
   ...overrides
 });
 
@@ -57,6 +59,68 @@ describe('API Inspector実行履歴', () => {
     expect(selectApiInspectorRunHistory(history, 'workspace-2').map((entry) => entry.id)).toEqual(['other']);
   });
 
+  it('ピン留め履歴を上部へ表示し、各グループの新しい順を維持する', () => {
+    const history = [
+      createHistoryEntry('newest', 'workspace-1', { executedAt: 3_000 }),
+      createHistoryEntry('middle', 'workspace-1', { executedAt: 2_000 }),
+      createHistoryEntry('pinned-old', 'workspace-1', { executedAt: 1_000, isPinned: true })
+    ];
+
+    expect(selectApiInspectorRunHistory(history, 'workspace-1').map((entry) => entry.id)).toEqual([
+      'pinned-old',
+      'newest',
+      'middle'
+    ]);
+  });
+
+  it('上限超過時は最新Replayを残し、既存の未ピン最古から優先して削除する', () => {
+    let history: ApiInspectorRunHistoryEntry[] = [];
+    for (let index = 0; index < maxApiInspectorRunHistoryEntriesPerWorkspace; index += 1) {
+      history = appendApiInspectorRunHistory(history, createHistoryEntry(`entry-${index}`));
+    }
+    history = toggleApiInspectorRunHistoryPin(history, 'entry-0');
+
+    history = appendApiInspectorRunHistory(history, createHistoryEntry('entry-20'));
+
+    const workspaceHistory = selectApiInspectorRunHistory(history, 'workspace-1');
+    expect(workspaceHistory).toHaveLength(maxApiInspectorRunHistoryEntriesPerWorkspace);
+    expect(workspaceHistory.some((entry) => entry.id === 'entry-20')).toBe(true);
+    expect(workspaceHistory.some((entry) => entry.id === 'entry-0')).toBe(true);
+    expect(workspaceHistory.some((entry) => entry.id === 'entry-1')).toBe(false);
+  });
+
+  it('既存20件がすべてピン済みでも最新Replayを保持し、最古のピンが上限から外れる', () => {
+    let history: ApiInspectorRunHistoryEntry[] = [];
+    for (let index = 0; index < maxApiInspectorRunHistoryEntriesPerWorkspace; index += 1) {
+      history = appendApiInspectorRunHistory(
+        history,
+        createHistoryEntry(`entry-${index}`, 'workspace-1', { isPinned: true })
+      );
+    }
+
+    history = appendApiInspectorRunHistory(history, createHistoryEntry('latest'));
+
+    const workspaceHistory = selectApiInspectorRunHistory(history, 'workspace-1');
+    expect(workspaceHistory).toHaveLength(maxApiInspectorRunHistoryEntriesPerWorkspace);
+    expect(workspaceHistory.some((entry) => entry.id === 'latest')).toBe(true);
+    expect(workspaceHistory.some((entry) => entry.id === 'entry-0')).toBe(false);
+    expect(workspaceHistory.filter((entry) => entry.isPinned)).toHaveLength(19);
+  });
+
+  it('ピン留めと解除を対象履歴だけへ反映する', () => {
+    const history = [
+      createHistoryEntry('one'),
+      createHistoryEntry('two', 'workspace-2')
+    ];
+
+    const pinned = toggleApiInspectorRunHistoryPin(history, 'one');
+    expect(pinned.find((entry) => entry.id === 'one')?.isPinned).toBe(true);
+    expect(pinned.find((entry) => entry.id === 'two')?.isPinned).toBe(false);
+
+    const unpinned = toggleApiInspectorRunHistoryPin(pinned, 'one');
+    expect(unpinned.find((entry) => entry.id === 'one')?.isPinned).toBe(false);
+  });
+
   it('同じIDを再追加した場合は重複させず先頭へ移動する', () => {
     const first = createHistoryEntry('same', 'workspace-1', { executedAt: 1_000 });
     const second = createHistoryEntry('same', 'workspace-1', { executedAt: 2_000, durationMs: 120 });
@@ -70,8 +134,8 @@ describe('API Inspector実行履歴', () => {
 
   it('指定Workspaceの履歴だけをクリアする', () => {
     const history = [
-      createHistoryEntry('one'),
-      createHistoryEntry('two', 'workspace-2')
+      createHistoryEntry('one', 'workspace-1', { isPinned: true }),
+      createHistoryEntry('two', 'workspace-2', { isPinned: true })
     ];
 
     expect(clearApiInspectorRunHistory(history, 'workspace-1').map((entry) => entry.id)).toEqual(['two']);

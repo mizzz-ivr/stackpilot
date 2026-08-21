@@ -8,6 +8,7 @@ import { formatDurationLabel, toPathLabel } from '../../shared/domain/inspector'
 import { evaluateRequestReplayEligibility } from '../../shared/domain/requestReplay';
 import { useApiInspectorRunHistoryStore } from '../store/apiInspectorRunHistoryStore';
 import { useAppStore } from '../store/appStore';
+import { PinIcon } from './ApiLogFilterToolbar';
 import { RequestReplayDialog } from './RequestReplayDialog';
 
 export const ApiInspectorRunHistoryController = () => {
@@ -17,6 +18,7 @@ export const ApiInspectorRunHistoryController = () => {
   const clearInspectorComparison = useAppStore((state) => state.clearInspectorComparison);
   const toggleInspectorComparison = useAppStore((state) => state.toggleInspectorComparison);
   const history = useApiInspectorRunHistoryStore((state) => state.history);
+  const toggleHistoryPin = useApiInspectorRunHistoryStore((state) => state.togglePin);
   const clearHistoryWorkspace = useApiInspectorRunHistoryStore((state) => state.clearWorkspace);
   const [expanded, setExpanded] = useState(false);
   const [replayHistoryEntry, setReplayHistoryEntry] = useState<ApiInspectorRunHistoryEntry>();
@@ -111,12 +113,33 @@ export const ApiInspectorRunHistoryController = () => {
                 const replayAvailable = Boolean(sourceLog && replayEligibility?.replayable);
 
                 return (
-                  <div key={entry.id} className="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
-                    <div className="flex min-w-0 flex-wrap items-center gap-2 text-[10px]">
-                      <span className="font-semibold text-cyan-300">{entry.method.toUpperCase()}</span>
-                      <span className="text-slate-300">HTTP {entry.responseStatus ?? '—'}</span>
-                      <span className="text-slate-500">{formatDurationLabel(entry.durationMs)}</span>
-                      <span className="text-slate-600">{formatHistoryTime(entry.executedAt)}</span>
+                  <div
+                    key={entry.id}
+                    className={`rounded-lg border p-2.5 ${
+                      entry.isPinned
+                        ? 'border-amber-800/60 bg-amber-950/10 ring-1 ring-amber-400/10'
+                        : 'border-slate-800 bg-slate-900/70'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2 text-[10px]">
+                        <span className="font-semibold text-cyan-300">{entry.method.toUpperCase()}</span>
+                        <span className="text-slate-300">HTTP {entry.responseStatus ?? '—'}</span>
+                        <span className="text-slate-500">{formatDurationLabel(entry.durationMs)}</span>
+                        <span className="text-slate-600">{formatHistoryTime(entry.executedAt)}</span>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label={entry.isPinned ? '再実行履歴のピン留めを解除' : '再実行履歴をピン留め'}
+                        aria-pressed={entry.isPinned}
+                        title={entry.isPinned ? 'ピン留めを解除' : '履歴上部へピン留め'}
+                        className={`shrink-0 rounded p-1 transition-colors ${
+                          entry.isPinned ? 'text-amber-300' : 'text-slate-600 hover:text-slate-300'
+                        }`}
+                        onClick={() => toggleHistoryPin(entry.id)}
+                      >
+                        <PinIcon className="h-3.5 w-3.5" filled={entry.isPinned} />
+                      </button>
                     </div>
                     <p className="mt-1 truncate text-[11px] text-slate-200" title={entry.targetUrl}>
                       {toPathLabel(entry.targetUrl)}
@@ -158,7 +181,7 @@ export const ApiInspectorRunHistoryController = () => {
               })
             )}
             <p className="text-[9px] leading-4 text-slate-600">
-              Workspaceごとに最大20件、このアプリ実行中のメモリだけに保持します。
+              Workspaceごとに最大20件。ピン留めは上部へ表示し、上限超過時は既存の未ピン履歴から優先して整理します。最新のReplayは必ず残ります。
             </p>
           </div>
         ) : null}
